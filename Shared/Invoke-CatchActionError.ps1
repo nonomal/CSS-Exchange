@@ -1,10 +1,10 @@
 ﻿# Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-Function Invoke-CatchActionError {
+function Invoke-CatchActionError {
     [CmdletBinding()]
     param(
-        [scriptblock]$CatchActionFunction
+        [ScriptBlock]$CatchActionFunction
     )
 
     if ($null -ne $CatchActionFunction) {

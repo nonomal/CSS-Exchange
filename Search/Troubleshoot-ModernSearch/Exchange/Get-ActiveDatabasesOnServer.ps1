@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 #Dependencies are based off EMS cmdlets.
-Function Get-ActiveDatabasesOnServer {
+function Get-ActiveDatabasesOnServer {
     [CmdletBinding()]
     param(
         [ValidateNotNullOrEmpty()]
@@ -15,10 +15,7 @@ Function Get-ActiveDatabasesOnServer {
 
         foreach ($srv in $Server) {
 
-            Get-MailboxDatabaseCopyStatus *\$srv |
-                Where-Object {
-                    $_.Status -like "*Mounted*"
-                } |
+            Get-MailboxDatabaseCopyStatus -Server $srv -Active |
                 ForEach-Object {
                     $activeDatabasesOnServerList.Add([PSCustomObject]@{
                             DBName = $_.DatabaseName

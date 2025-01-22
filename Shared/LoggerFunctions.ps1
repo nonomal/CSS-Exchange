@@ -1,10 +1,9 @@
 ﻿# Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-Function Get-NewLoggerInstance {
+function Get-NewLoggerInstance {
     [CmdletBinding()]
     param(
-        [ValidateScript( { Test-Path $_ })]
         [string]$LogDirectory = (Get-Location).Path,
 
         [ValidateNotNullOrEmpty()]
@@ -24,6 +23,14 @@ Function Get-NewLoggerInstance {
     $fileName = if ($AppendDateTimeToFileName) { "{0}_{1}.txt" -f $LogName, ((Get-Date).ToString('yyyyMMddHHmmss')) } else { "$LogName.txt" }
     $fullFilePath = [System.IO.Path]::Combine($LogDirectory, $fileName)
 
+    if (-not (Test-Path $LogDirectory)) {
+        try {
+            New-Item -ItemType Directory -Path $LogDirectory -ErrorAction Stop | Out-Null
+        } catch {
+            throw "Failed to create Log Directory: $LogDirectory. Inner Exception: $_"
+        }
+    }
+
     return [PSCustomObject]@{
         FullPath                 = $fullFilePath
         AppendDateTime           = $AppendDateTime
@@ -38,7 +45,7 @@ Function Get-NewLoggerInstance {
     } | Write-LoggerInstance -Object "Starting Logger Instance $(Get-Date)"
 }
 
-Function Write-LoggerInstance {
+function Write-LoggerInstance {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
@@ -55,7 +62,8 @@ Function Write-LoggerInstance {
             $Object = "[$([System.DateTime]::Now)] : $Object"
         }
 
-        $Object | Out-File $LoggerInstance.FullPath -Append
+        # Doing WhatIf:$false to support -WhatIf in main scripts but still log the information
+        $Object | Out-File $LoggerInstance.FullPath -Append -WhatIf:$false
 
         #Upkeep of the logger information
         if ($LoggerInstance.NextFileCheckTime -gt [System.DateTime]::Now) {
@@ -87,7 +95,7 @@ Function Write-LoggerInstance {
     }
 }
 
-Function Invoke-LoggerInstanceCleanup {
+function Invoke-LoggerInstanceCleanup {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]

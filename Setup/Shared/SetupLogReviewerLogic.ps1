@@ -11,9 +11,10 @@
 . $PSScriptRoot\..\SetupLogReviewer\Checks\FindContext\Test-KnownMsiIssuesCheck.ps1
 . $PSScriptRoot\..\SetupLogReviewer\Checks\FindContext\Test-OtherWellKnownObjects.ps1
 . $PSScriptRoot\..\SetupLogReviewer\Checks\FindContext\Test-PrerequisiteCheck.ps1
+. $PSScriptRoot\..\SetupLogReviewer\Checks\FindContext\Test-SharedConfigDc.ps1
 . $PSScriptRoot\..\SetupLogReviewer\Checks\FindContext\Write-LastErrorInformation.ps1
 . $PSScriptRoot\..\SetupLogReviewer\Checks\Write-Result.ps1
-Function Invoke-SetupLogReviewer {
+function Invoke-SetupLogReviewer {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true,
@@ -21,7 +22,7 @@ Function Invoke-SetupLogReviewer {
         [System.IO.FileInfo]$SetupLog,
         [switch]$DelegatedSetup
     )
-    Function InvokeTests {
+    function InvokeTests {
         [CmdletBinding()]
         param(
             [object]$SetupLogReviewer,
@@ -48,14 +49,25 @@ Function Invoke-SetupLogReviewer {
     $ranDate = $setupLogReviewer.SetupRunDate
 
     if ($ranDate -lt ([DateTime]::Now.AddDays(-14))) { $color = "Yellow" }
+    Write-Host "Setup Mode: $($setupLogReviewer.SetupMode)"
     Write-Host "Setup.exe Run Date: $ranDate" -ForegroundColor $color
     Write-Host "Setup.exe Build Number: $($setupLogReviewer.SetupBuildNumber)"
 
     if (-not ([string]::IsNullOrEmpty($setupLogReviewer.LocalBuildNumber))) {
         Write-Host "Current Exchange Build: $($setupLogReviewer.LocalBuildNumber)"
 
-        if ($setupLogReviewer.LocalBuildNumber -eq $setupLogReviewer.SetupBuildNumber) {
-            Write-Host "Same build number detected..... if using powershell.exe to start setup. Make sure you do '.\setup.exe'" -ForegroundColor "Red"
+        try {
+            $localBuild = New-Object System.Version $setupLogReviewer.LocalBuildNumber -ErrorAction Stop
+            $setupBuild = New-Object System.Version $setupLogReviewer.SetupBuildNumber -ErrorAction Stop
+
+            if (($localBuild -eq $setupBuild -or
+                ($localBuild.Minor -eq $setupBuild.Minor -and
+                    $localBuild.Build -eq $setupBuild.Build)) -and
+                ($setupLogReviewer.SetupMode -ne "Install")) {
+                Write-Host "Same build number detected..... if using powershell.exe to start setup. Make sure you do '.\setup.exe'" -ForegroundColor "Red"
+            }
+        } catch {
+            Write-Verbose "Failed to convert to System.Version"
         }
     }
 
@@ -82,6 +94,7 @@ Function Invoke-SetupLogReviewer {
         "Test-OtherWellKnownObjects",
         "Test-IsHybridObjectFoundOnPremises",
         "Test-InvalidWKObjectTargetException",
+        "Test-SharedConfigDc",
         "Write-LastErrorInformation"
     )
 }

@@ -6,7 +6,7 @@
         This script contains mitigations to help address the following vulnerabilities.
             CVE-2021-26855
         For more information on each mitigation please visit https://aka.ms/exchangevulns
-        Use of the Exchange On-premises Mitigation Tool and the Microsoft Saftey Scanner are subject to the terms of the Microsoft Privacy Statement: https://aka.ms/privacy
+        Use of the Exchange On-premises Mitigation Tool and the Microsoft Safety Scanner are subject to the terms of the Microsoft Privacy Statement: https://aka.ms/privacy
     .DESCRIPTION
        This script has three operations it performs:
             Mitigation of CVE-2021-26855 via a URL Rewrite configuration. Note: this mitigates current known attacks.
@@ -23,7 +23,7 @@
     .PARAMETER DoNotRemediate
         If set, MSERT will not remediate detected threats.
     .PARAMETER DoNotAutoUpdateEOMT
-        If set, will not attempt to download and run latest EOMT version from github.
+        If set, will not attempt to download and run latest EOMT version from GitHub.
     .EXAMPLE
 		PS C:\> EOMT.ps1
 		This will run the default mode which does the following:
@@ -45,7 +45,7 @@
         https://aka.ms/privacy
 #>
 
-[Cmdletbinding()]
+[CmdletBinding(SupportsShouldProcess, ConfirmImpact = "High")]
 param (
     [switch]$RunFullScan,
     [switch]$RollbackMitigation,
@@ -67,7 +67,7 @@ $versionsUrl = 'https://github.com/microsoft/CSS-Exchange/releases/latest/downlo
 $MicrosoftSigningRoot2010 = 'CN=Microsoft Root Certificate Authority 2010, O=Microsoft Corporation, L=Redmond, S=Washington, C=US'
 $MicrosoftSigningRoot2011 = 'CN=Microsoft Root Certificate Authority 2011, O=Microsoft Corporation, L=Redmond, S=Washington, C=US'
 
-#autopopulated by CSS-Exchange build
+#auto populated by CSS-Exchange build
 $BuildVersion = ""
 
 # Force TLS1.2 to make sure we can download from HTTPS
@@ -160,7 +160,7 @@ function Run-Mitigate {
     }
 
     function Test-IIS10 {
-        $iisRegPath = "hklm:\SOFTWARE\Microsoft\InetStp"
+        $iisRegPath = "HKLM:\SOFTWARE\Microsoft\InetStp"
 
         if (Test-Path $iisRegPath) {
             $properties = Get-ItemProperty $iisRegPath
@@ -215,7 +215,7 @@ function Run-Mitigate {
         return $DownloadLinks[$Architecture][$Language]
     }
 
-    #Configure Rewrite Rule consts
+    #Configure Rewrite Rule constants
     $HttpCookieInput = '{HTTP_COOKIE}'
     $root = 'system.webServer/rewrite/rules'
     $inbound = '.*'
@@ -229,7 +229,7 @@ function Run-Mitigate {
     Import-Module WebAdministration
 
     if ($RollbackMitigation) {
-        $Message = "Starting rollback of mitigation on $env:computername"
+        $Message = "Starting rollback of mitigation on $env:COMPUTERNAME"
         $RegMessage = "Starting rollback of mitigation"
         Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
 
@@ -249,23 +249,23 @@ function Run-Mitigate {
                 Clear-WebConfiguration -PSPath $site -Filter 'system.webServer/rewrite/rules'
             }
 
-            $Message = "Rollback of mitigation complete on $env:computername"
+            $Message = "Rollback of mitigation complete on $env:COMPUTERNAME"
             $RegMessage = "Rollback of mitigation complete"
             Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
         } else {
-            $Message = "Mitigation not present on $env:computername"
+            $Message = "Mitigation not present on $env:COMPUTERNAME"
             $RegMessage = "Mitigation not present"
             Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
         }
     } else {
-        $Message = "Starting mitigation process on $env:computername"
+        $Message = "Starting mitigation process on $env:COMPUTERNAME"
         $RegMessage = "Starting mitigation process"
         Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
 
         $RewriteModule = Get-InstalledSoftwareVersion -Name "*IIS*", "*URL*", "*2*"
 
         if ($RewriteModule) {
-            $Message = "IIS URL Rewrite Module is already installed on $env:computername"
+            $Message = "IIS URL Rewrite Module is already installed on $env:COMPUTERNAME"
             $RegMessage = "IIS URL Rewrite Module already installed"
             Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
         } else {
@@ -279,25 +279,25 @@ function Run-Mitigate {
             $MSIProductVersion = Get-MsiProductVersion -filename $DownloadPath
 
             if ($MSIProductVersion -lt "7.2.1993") {
-                $Message = "Incorrect IIS URL Rewrite Module downloaded on $env:computername"
+                $Message = "Incorrect IIS URL Rewrite Module downloaded on $env:COMPUTERNAME"
                 $RegMessage = "Incorrect IIS URL Rewrite Module downloaded"
                 Set-LogActivity -Error -Stage $Stage -RegMessage $RegMessage -Message $Message
                 throw
             }
             #KB2999226 required for IIS Rewrite 2.1 on IIS ver under 10
             if (!(Test-IIS10) -and !(Get-HotFix -Id "KB2999226" -ErrorAction SilentlyContinue)) {
-                $Message = "Did not detect the KB2999226 on $env:computername. Please review the pre-reqs for this KB and download from https://support.microsoft.com/en-us/topic/update-for-universal-c-runtime-in-windows-c0514201-7fe6-95a3-b0a5-287930f3560c"
+                $Message = "Did not detect the KB2999226 on $env:COMPUTERNAME. Please review the prerequisite for this KB and download from https://support.microsoft.com/en-us/topic/update-for-universal-c-runtime-in-windows-c0514201-7fe6-95a3-b0a5-287930f3560c"
                 $RegMessage = "Did not detect KB299226"
                 Set-LogActivity -Error -Stage $Stage -RegMessage $RegMessage -Message $Message
                 throw
             }
 
-            $Message = "Installing the IIS URL Rewrite Module on $env:computername"
+            $Message = "Installing the IIS URL Rewrite Module on $env:COMPUTERNAME"
             $RegMessage = "Installing IIS URL Rewrite Module"
             Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
 
             $arguments = "/i `"$DownloadPath`" /quiet /log `"$RewriteModuleInstallLog`""
-            $msiexecPath = $env:WINDIR + "\System32\msiexec.exe"
+            $msiExecPath = $env:WINDIR + "\System32\msiExec.exe"
 
             if (!(Confirm-Signature -filepath $DownloadPath -Stage $stage)) {
                 $Message = "File present at $DownloadPath does not seem to be signed as expected, stopping execution."
@@ -307,16 +307,16 @@ function Run-Mitigate {
                 throw
             }
 
-            Start-Process -FilePath $msiexecPath -ArgumentList $arguments -Wait
+            Start-Process -FilePath $msiExecPath -ArgumentList $arguments -Wait
             Start-Sleep -Seconds 15
             $RewriteModule = Get-InstalledSoftwareVersion -Name "*IIS*", "*URL*", "*2*"
 
             if ($RewriteModule) {
-                $Message = "IIS URL Rewrite Module installed on $env:computername"
+                $Message = "IIS URL Rewrite Module installed on $env:COMPUTERNAME"
                 $RegMessage = "IIS URL Rewrite Module installed"
                 Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
             } else {
-                $Message = "Issue installing IIS URL Rewrite Module $env:computername"
+                $Message = "Issue installing IIS URL Rewrite Module $env:COMPUTERNAME"
                 $RegMessage = "Issue installing IIS URL Rewrite Module"
                 Set-LogActivity -Error -Stage $Stage -RegMessage $RegMessage -Message $Message
                 throw
@@ -338,15 +338,15 @@ function Run-Mitigate {
                 Clear-WebConfiguration -Filter $filter2 -PSPath $site
             }
 
-            Add-WebConfigurationProperty -PSPath $site -filter $root -name '.' -value @{name = $name; patternSyntax = 'Regular Expressions'; stopProcessing = 'False' }
-            Set-WebConfigurationProperty -PSPath $site -filter "$filter/match" -name 'url' -value $inbound
-            Set-WebConfigurationProperty -PSPath $site -filter "$filter/conditions" -name '.' -value @{input = $HttpCookieInput; matchType = '0'; pattern = $pattern; ignoreCase = 'True'; negate = 'False' }
-            Set-WebConfigurationProperty -PSPath $site -filter "$filter/action" -name 'type' -value 'AbortRequest'
+            Add-WebConfigurationProperty -PSPath $site -Filter $root -Name '.' -Value @{name = $name; patternSyntax = 'Regular Expressions'; stopProcessing = 'False' }
+            Set-WebConfigurationProperty -PSPath $site -Filter "$filter/match" -Name 'url' -Value $inbound
+            Set-WebConfigurationProperty -PSPath $site -Filter "$filter/conditions" -Name '.' -Value @{input = $HttpCookieInput; matchType = '0'; pattern = $pattern; ignoreCase = 'True'; negate = 'False' }
+            Set-WebConfigurationProperty -PSPath $site -Filter "$filter/action" -Name 'type' -Value 'AbortRequest'
 
-            Add-WebConfigurationProperty -PSPath $site -filter $root -name '.' -value @{name = $name2; patternSyntax = 'Regular Expressions'; stopProcessing = 'True' }
-            Set-WebConfigurationProperty -PSPath $site -filter "$filter2/match" -name 'url' -value $inbound
-            Set-WebConfigurationProperty -PSPath $site -filter "$filter2/conditions" -name '.' -value @{input = $HttpCookieInput; matchType = '0'; pattern = $pattern2; ignoreCase = 'True'; negate = 'False' }
-            Set-WebConfigurationProperty -PSPath $site -filter "$filter2/action" -name 'type' -value 'AbortRequest'
+            Add-WebConfigurationProperty -PSPath $site -Filter $root -Name '.' -Value @{name = $name2; patternSyntax = 'Regular Expressions'; stopProcessing = 'True' }
+            Set-WebConfigurationProperty -PSPath $site -Filter "$filter2/match" -Name 'url' -Value $inbound
+            Set-WebConfigurationProperty -PSPath $site -Filter "$filter2/conditions" -Name '.' -Value @{input = $HttpCookieInput; matchType = '0'; pattern = $pattern2; ignoreCase = 'True'; negate = 'False' }
+            Set-WebConfigurationProperty -PSPath $site -Filter "$filter2/action" -Name 'type' -Value 'AbortRequest'
 
             $Message = "Mitigation complete on $env:COMPUTERNAME :: $WebSiteName"
             $RegMessage = "Mitigation complete"
@@ -362,13 +362,14 @@ function Run-Mitigate {
 
 function Run-MSERT {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseApprovedVerbs', '', Justification = 'Invalid rule result')]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = "High")]
     param(
         [switch]$RunFullScan,
         [switch]$DoNotRemediate
     )
     $Stage = "MSERTProcess"
     if ($DoNotRunMSERT) {
-        $Message = "Skipping MSERT scan -DoNotRunMSERT set on $env:computername"
+        $Message = "Skipping MSERT scan -DoNotRunMSERT set on $env:COMPUTERNAME"
         $RegMessage = "Skipping mitigation -DoNotRunMSERT"
         Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
         return
@@ -389,14 +390,14 @@ function Run-MSERT {
     }
 
     #Check for running MSERT or MRT process before download
-    $procsToWaitFor = @("mrt", "msert")
+    $processToWaitFor = @("mrt", "msert")
     :checkForRunningCleaner while ($true) {
-        foreach ($procName in $procsToWaitFor) {
+        foreach ($procName in $processToWaitFor) {
             $proc = Get-Process -Name $procName -ErrorAction SilentlyContinue
             if ($proc) {
-                $pids = [string]::Join(",", $proc.Id)
+                $pIds = [string]::Join(",", $proc.Id)
 
-                $Message = "Found $procName already running ($pids). Waiting for it to exit."
+                $Message = "Found $procName already running ($pIds). Waiting for it to exit."
                 $RegMessage = "msert already running waiting"
                 $Stage = "MSERTProcess"
                 Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
@@ -408,7 +409,6 @@ function Run-MSERT {
         break
     }
 
-
     if ((Get-Item $env:TEMP).PSDrive.Free -ge 314572800) {
         if ([System.Environment]::Is64BitOperatingSystem) {
             $MSERTUrl = "https://go.microsoft.com/fwlink/?LinkId=212732"
@@ -416,7 +416,7 @@ function Run-MSERT {
             $MSERTUrl = "https://go.microsoft.com/fwlink/?LinkId=212733"
         }
 
-        $Message = "Starting MSERTProcess on $env:computername"
+        $Message = "Starting MSERTProcess on $env:COMPUTERNAME"
         $RegMessage = "Starting MSERTProcess"
         Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
 
@@ -424,18 +424,18 @@ function Run-MSERT {
             $msertExe = Join-Path $EOMTDir "\msert.exe"
             $response = Invoke-WebRequest $MSERTUrl -UseBasicParsing
             [IO.File]::WriteAllBytes($msertExe, $response.Content)
-            $Message = "MSERT download complete on $env:computername"
+            $Message = "MSERT download complete on $env:COMPUTERNAME"
             $RegMessage = "MSERT download complete"
             Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
         } catch {
-            $Message = "MSERT download failed on $env:computername"
+            $Message = "MSERT download failed on $env:COMPUTERNAME"
             $RegMessage = "MSERT download failed"
             Set-LogActivity -Error -Stage $Stage -RegMessage $RegMessage -Message $Message
             throw
         }
     } else {
         $drive = (Get-Item $env:TEMP).PSDrive.Root
-        $Message = "MSERT download failed on $env:computername, due to lack of space on $drive"
+        $Message = "MSERT download failed on $env:COMPUTERNAME, due to lack of space on $drive"
         $RegMessage = "MSERT did not download. Ensure there is at least 300MB of free disk space on $drive"
         Set-LogActivity -Error -Stage $Stage -RegMessage $RegMessage -Message $Message
         throw
@@ -496,16 +496,9 @@ function Run-MSERT {
     $ScanMode = ""
     if ($RunFullScan) {
         Write-Warning -Message "Running a full scan can take hours or days to complete."
-        Write-Warning -Message "Would you like to continue with the Full MSERT Scan?"
 
-        while ($true) {
-            $Confirm = Read-Host "(Y/N)"
-            if ($Confirm -like "N") {
-                return
-            }
-            if ($Confirm -like "Y") {
-                break
-            }
+        if (-not ($PSCmdlet.ShouldProcess($env:COMPUTERNAME, "Would you like to continue with the Full MSERT Scan?"))) {
+            return
         }
 
         $ScanMode = "Full Scan"
@@ -519,14 +512,14 @@ function Run-MSERT {
         $ScanMode += " (No Remediation)"
     }
 
-    $Message = "Running Microsoft Safety Scanner - Mode: $ScanMode on $env:computername"
+    $Message = "Running Microsoft Safety Scanner - Mode: $ScanMode on $env:COMPUTERNAME"
     $RegMessage = "Running Microsoft Safety Scanner $ScanMode"
     Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
 
     $msertDetected = RunMsert -FullScan:$RunFullScan -DoNotRemediate:$DoNotRemediate
 
     if ($msertDetected) {
-        Write-Warning -Message "THREATS DETECTED on $env:computername!"
+        Write-Warning -Message "THREATS DETECTED on $env:COMPUTERNAME!"
         Get-Content $msertLogPath
         $Message = "Threats detected! Please review `"$msertLogPath`" as soon as possible. "
         if (!$RunFullScan) {
@@ -536,7 +529,7 @@ function Run-MSERT {
         $RegMessage = "Microsoft Safety Scanner is complete: THREATS DETECTED"
         Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
     } else {
-        $Message = "Microsoft Safety Scanner is complete on $env:computername No known threats detected."
+        $Message = "Microsoft Safety Scanner is complete on $env:COMPUTERNAME No known threats detected."
         $RegMessage = "Microsoft Safety Scanner is complete"
         Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
     }
@@ -571,8 +564,8 @@ function Get-ServerPatchStatus {
     $KBregex = "[0-9]{7}"
 
     [long]$LatestInstalledExchangeSU = (Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\* |
-            Where-Object displayname -Like "Security Update for Exchange Server*" |
-            Select-Object displayname |
+            Where-Object DisplayName -Like "Security Update for Exchange Server*" |
+            Select-Object DisplayName |
             Select-String -Pattern $KBregex).Matches.Value
 
     if ($Version -ge [version]$LatestCU) {
@@ -647,7 +640,7 @@ function Set-LogActivity {
         $FullRegMessage = "1 $RegMessage"
         $Level = "Info"
     }
-    If ($Level -eq "Info") {
+    if ($Level -eq "Info") {
         Write-Verbose -Message $Message -Verbose
     } elseif ($Level -eq "Notice") {
         Write-Host -ForegroundColor Cyan -BackgroundColor black "NOTICE: $Message"
@@ -729,7 +722,7 @@ function Confirm-Signature {
 
         if ($rootCert.Certificate.Subject -ne $rootCert.Certificate.Issuer) {
             $IsValid = $false
-            $failMsg += "Top-level certifcate in chain is not a root certificate"
+            $failMsg += "Top-level certificate in chain is not a root certificate"
             throw
         }
 
@@ -784,7 +777,7 @@ Microsoft saved several files to your system to "$EOMTDir". The only files that 
         rewrite_2.0_rtw_x86.msi
         rewrite_2.0_rtw_x64.msi
 1 - Confirm the IIS URL Rewrite Module is installed. This module is required for the mitigation of CVE-2021-26855, the module and the configuration (present or not) will not impact this system negatively.
-    a - If installed, Confirm the following entry exists in the "$env:SystemDrive\inetpub\wwwroot\web.config". If this configuration is not present, your server is not mitigated. This may have occurred if the module was not successfully installed with a supported version for your system.
+    a - If installed, Confirm the following entry exists in the "$env:SystemDrive\inetPub\wwwRoot\web.config". If this configuration is not present, your server is not mitigated. This may have occurred if the module was not successfully installed with a supported version for your system.
     <system.webServer>
         <rewrite>
             <rules>
@@ -815,7 +808,7 @@ $UpdateInfo
     }
 
     $summary = $summary.Replace("`r`n", "`n").Replace("`n", "`r`n")
-    $summary | Out-File -FilePath $SummaryFile -Encoding ascii -Force
+    $summary | Out-File -FilePath $SummaryFile -Encoding ASCII -Force
 }
 
 if (!([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
@@ -824,13 +817,13 @@ if (!([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]
 }
 
 if ($PSVersionTable.PSVersion.Major -lt 3) {
-    Write-Error "Unsupported version of PowerShell on $env:computername - The Exchange On-premises Mitigation Tool supports PowerShell 3 and later"
+    Write-Error "Unsupported version of PowerShell on $env:COMPUTERNAME - The Exchange On-premises Mitigation Tool supports PowerShell 3 and later"
     exit
 }
 
 #supported Exchange check
 if (!((Get-ItemProperty -Path Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\ExchangeServer\v15\Setup -ErrorAction 0).MsiInstallPath)) {
-    Write-Error "A supported version of Exchange was not found on $env:computername. The Exchange On-premises Mitigation Tool supports Exchange 2013, 2016, and 2019."
+    Write-Error "A supported version of Exchange was not found on $env:COMPUTERNAME. The Exchange On-premises Mitigation Tool supports Exchange 2013, 2016, and 2019."
     exit
 }
 
@@ -854,9 +847,9 @@ try {
         Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message -Notice
     }
 
-    $DisableAutoupdateIfneeded = "If you are getting this error even with updated EOMT, re-run with -DoNotAutoUpdateEOMT parameter";
+    $DisableAutoUpdateIfNeeded = "If you are getting this error even with updated EOMT, re-run with -DoNotAutoUpdateEOMT parameter"
 
-    $Stage = "AutoupdateEOMT"
+    $Stage = "AutoUpdateEOMT"
     if ($latestEOMTVersion -and ($BuildVersion -ne $latestEOMTVersion)) {
         if ($DoNotAutoUpdateEOMT) {
             $Message = "EOMT.ps1 is out of date. Version currently running is $BuildVersion, latest version available is $latestEOMTVersion. We strongly recommend downloading latest EOMT from $EOMTDownloadUrl and re-running EOMT. DoNotAutoUpdateEOMT is set, so continuing with execution"
@@ -864,34 +857,34 @@ try {
             Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message -Notice
         } else {
             $Stage = "DownloadLatestEOMT"
-            $eomtLatestFilepath = Join-Path $EOMTDir "EOMT_$latestEOMTVersion.ps1"
+            $EOMTLatestFilepath = Join-Path $EOMTDir "EOMT_$latestEOMTVersion.ps1"
             try {
                 $Message = "Downloading latest EOMT from $EOMTDownloadUrl"
                 Set-LogActivity -Stage $Stage -RegMessage $Message -Message $Message
-                Invoke-WebRequest $EOMTDownloadUrl -OutFile $eomtLatestFilepath -UseBasicParsing
+                Invoke-WebRequest $EOMTDownloadUrl -OutFile $EOMTLatestFilepath -UseBasicParsing
             } catch {
-                $Message = "Cannot download latest EOMT.  Please download latest EOMT yourself from $EOMTDownloadUrl, copy to necessary machine(s), and re-run. $DisableAutoupdateIfNeeded. Exception: $($_.Exception)"
+                $Message = "Cannot download latest EOMT.  Please download latest EOMT yourself from $EOMTDownloadUrl, copy to necessary machine(s), and re-run. $DisableAutoUpdateIfNeeded. Exception: $($_.Exception)"
                 $RegMessage = "Cannot download latest EOMT from $EOMTDownloadUrl. Stopping execution."
                 Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message -Error
                 throw
             }
 
             $Stage = "RunLatestEOMT"
-            if (Confirm-Signature -Filepath $eomtLatestFilepath -Stage $Stage) {
-                $Message = "Running latest EOMT version $latestEOMTVersion downloaded to $eomtLatestFilepath"
+            if (Confirm-Signature -Filepath $EOMTLatestFilepath -Stage $Stage) {
+                $Message = "Running latest EOMT version $latestEOMTVersion downloaded to $EOMTLatestFilepath"
                 Set-LogActivity -Stage $Stage -RegMessage $Message -Message $Message
 
                 try {
-                    & $eomtLatestFilepath @PSBoundParameters
-                    Exit
+                    & $EOMTLatestFilepath @PSBoundParameters
+                    exit
                 } catch {
-                    $Message = "Run failed for latest EOMT version $latestEOMTVersion downloaded to $eomtLatestFilepath, please re-run $eomtLatestFilepath manually. $DisableAutoupdateIfNeeded. Exception: $($_.Exception)"
+                    $Message = "Run failed for latest EOMT version $latestEOMTVersion downloaded to $EOMTLatestFilepath, please re-run $EOMTLatestFilepath manually. $DisableAutoUpdateIfNeeded. Exception: $($_.Exception)"
                     $RegMessage = "Run failed for latest EOMT version $latestEOMTVersion"
                     Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message -Error
                     throw
                 }
             } else {
-                $Message = "File downloaded to $eomtLatestFilepath does not seem to be signed as expected, stopping execution."
+                $Message = "File downloaded to $EOMTLatestFilepath does not seem to be signed as expected, stopping execution."
                 $RegMessage = "File downloaded for EOMT.ps1 does not seem to be signed as expected, stopping execution"
                 Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message -Error
                 Write-Summary -NoRemediation:$DoNotRemediate
@@ -902,18 +895,18 @@ try {
 
     $Stage = "EOMTStart"
 
-    $Message = "Starting EOMT.ps1 version $BuildVersion on $env:computername"
+    $Message = "Starting EOMT.ps1 version $BuildVersion on $env:COMPUTERNAME"
     $RegMessage = "Starting EOMT.ps1 version $BuildVersion"
     Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
 
-    $Message = "EOMT precheck complete on $env:computername"
-    $RegMessage = "EOMT precheck complete"
+    $Message = "EOMT preCheck complete on $env:COMPUTERNAME"
+    $RegMessage = "EOMT preCheck complete"
     Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
 
     #Execute Mitigation
     if ($DoNotRunMitigation) {
         $Stage = "DoNotRunMitigation"
-        $Message = "Skipping mitigation -DoNotRunMitigation set on $env:computername"
+        $Message = "Skipping mitigation -DoNotRunMitigation set on $env:COMPUTERNAME"
         $RegMessage = "Skipping mitigation -DoNotRunMitigation"
         Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
     }
@@ -931,7 +924,7 @@ try {
             $IsVulnerable = $False
         }
         if ($IsVulnerable) {
-            $Message = "$env:computername is vulnerable: applying mitigation"
+            $Message = "$env:COMPUTERNAME is vulnerable: applying mitigation"
             $RegMessage = "Server is vulnerable"
             Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
             Run-Mitigate
@@ -942,7 +935,7 @@ try {
                 Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message -Notice
             }
         } else {
-            $Message = "$env:computername is not vulnerable: mitigation not needed"
+            $Message = "$env:COMPUTERNAME is not vulnerable: mitigation not needed"
             $RegMessage = "Server is not vulnerable"
             Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
         }
@@ -955,12 +948,12 @@ try {
         Run-MSERT -DoNotRemediate:$DoNotRemediate
     }
 
-    $Message = "EOMT.ps1 complete on $env:computername, please review EOMT logs at $EOMTLogFile and the summary file at $SummaryFile"
+    $Message = "EOMT.ps1 complete on $env:COMPUTERNAME, please review EOMT logs at $EOMTLogFile and the summary file at $SummaryFile"
     $RegMessage = "EOMT.ps1 completed successfully"
     Set-LogActivity -Stage $Stage -RegMessage $RegMessage -Message $Message
     Write-Summary -Pass -NoRemediation:$DoNotRemediate #Pass
 } catch {
-    $Message = "EOMT.ps1 failed to complete on $env:computername, please review EOMT logs at $EOMTLogFile and the summary file at $SummaryFile - $_"
+    $Message = "EOMT.ps1 failed to complete on $env:COMPUTERNAME, please review EOMT logs at $EOMTLogFile and the summary file at $SummaryFile - $_"
     $RegMessage = "EOMT.ps1 failed to complete"
     Set-LogActivity -Error -Stage $Stage -RegMessage $RegMessage -Message $Message
     Write-Summary -NoRemediation:$DoNotRemediate #Fail

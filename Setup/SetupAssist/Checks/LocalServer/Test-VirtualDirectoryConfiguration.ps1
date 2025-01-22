@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 . $PSScriptRoot\..\New-TestResult.ps1
+. $PSScriptRoot\..\..\..\..\Shared\ActiveDirectoryFunctions\Get-OrganizationContainer.ps1
 
 function Test-VirtualDirectoryConfiguration {
     [CmdletBinding()]
@@ -10,7 +11,7 @@ function Test-VirtualDirectoryConfiguration {
     begin {
         $problemsFound = $false
         $fixesPerformed = $false
-        $appHostConfigPath = "$($env:WINDIR)\System32\inetsrv\config\applicationHost.config"
+        $appHostConfigPath = "$($env:WINDIR)\System32\inetSrv\config\applicationHost.config"
         $resultParams = @{
             TestName = "Virtual Directory Configuration"
         }
@@ -24,7 +25,7 @@ function Test-VirtualDirectoryConfiguration {
             return
         }
 
-        $expectedVdirs = @(
+        $expectedVDirs = @(
             [PSCustomObject]@{DirectoryName = "Autodiscover (Default Web Site)"; Paths = @("/Autodiscover") },
             [PSCustomObject]@{DirectoryName = "Autodiscover (Exchange Back End)"; Paths = @("/Autodiscover") },
             [PSCustomObject]@{DirectoryName = "ecp (Default Web Site)"; Paths = @("/ecp") },
@@ -46,9 +47,7 @@ function Test-VirtualDirectoryConfiguration {
 
         $searcher = $null
         try {
-            $configDN = ([ADSI]("LDAP://RootDSE")).Properties["configurationNamingContext"][0].ToString()
-            $exchangeDN = "CN=Microsoft Exchange,CN=Services,$configDN"
-            $exchangeContainer = [ADSI]("LDAP://$exchangeDN")
+            $exchangeContainer = Get-ExchangeContainer
             $searcher = New-Object System.DirectoryServices.DirectorySearcher($exchangeContainer)
         } catch {
             New-TestResult @resultParams -Result "Failed" -Details "Failed to find Exchange configuration object."
@@ -74,7 +73,12 @@ function Test-VirtualDirectoryConfiguration {
             return
         }
 
-        $vdirsInDirectory = $httpProtocol.GetDirectoryEntry().Children
+        if ($null -eq $httpProtocol) {
+            New-TestResult @resultParams -Result "Failed" -Details "Failed to find HTTP protocol object."
+            return
+        }
+
+        $VDirsInDirectory = $httpProtocol.GetDirectoryEntry().Children
 
         $appHostConfig = New-Object Xml
         try {
@@ -93,44 +97,113 @@ function Test-VirtualDirectoryConfiguration {
             Validate the state of IIS objects.
         #>
 
-        foreach ($expectedVdir in $expectedVdirs) {
-            Write-Verbose "Validating vdir $($expectedVdir.DirectoryName)."
+        foreach ($expectedVDir in $expectedVDirs) {
+            Write-Verbose "Validating VDir $($expectedVDir.DirectoryName)."
             $expectedIISObjectsPresent = @()
             $expectedIISObjectsMissing = @()
-            $siteName = ($expectedVdir.DirectoryName | Select-String "\((.*)\)").Matches.Groups[1].Value
+            $siteName = ($expectedVDir.DirectoryName | Select-String "\((.*)\)").Matches.Groups[1].Value
             $iisSite = $appHostConfig.LastChild."system.applicationHost".sites.GetEnumerator() | Where-Object { $_.name -eq $siteName }
-            foreach ($expectedPath in $expectedVdir.Paths) {
+            foreach ($expectedPath in $expectedVDir.Paths) {
                 $iisObject = $iisSite.application | Where-Object { $_.Path -eq $expectedPath }
                 if ($null -ne $iisObject) {
-                    $expectedIISObjectsPresent += $expectedPath
+                    $expectedIISObjectsPresent += $iisObject.Path
                 } else {
                     $expectedIISObjectsMissing += $expectedPath
                 }
             }
 
-            $adObject = $vdirsInDirectory | Where-Object { $_.Properties["cn"][0].ToString() -eq $expectedVdir.DirectoryName }
+            $adObject = $VDirsInDirectory | Where-Object { $_.Properties["cn"][0].ToString() -eq $expectedVDir.DirectoryName }
+            $locationPaths = ($appHostConfig.LastChild.Location.GetEnumerator() |
+                    Where-Object { $_.Path -like "$($iisSite.Name)$($expectedVDir.Paths[0])*" }).Path
+            $customMetadataPaths = ($appHostConfig.LastChild."system.applicationHost".customMetadata.key.GetEnumerator() |
+                    Where-Object { $_.Path -like "*$($iisSite.Id)/ROOT$($expectedVDir.Paths[0])*" } ).Path
+            $owaRootPaths = @()
 
-            if ($expectedIISObjectsPresent.Count -eq 0) {
+            if ($expectedVDir.DirectoryName -eq "owa (Exchange Back End)") {
+                $specialPaths = @("/Exchange", "/Exchweb", "/Public")
+                $tempLocationPaths = @()
+
+                foreach ($path in $specialPaths) {
+                    $node = $appHostConfig.LastChild.Location.GetEnumerator() | Where-Object { $_.Path -like "$($iisSite.Name)$path" }
+                    if ($null -ne $node) { $tempLocationPaths += $node.Path }
+                }
+
+                if ($null -eq $locationPaths) {
+                    $locationPaths = $tempLocationPaths
+                } elseif ($tempLocationPaths.Count -gt 0) {
+                    $locationPaths += $tempLocationPaths
+                }
+
+                foreach ($path in $specialPaths) {
+                    $node = ($iisSite.application.GetEnumerator() | Where-Object { $_.Path -eq "/" }).GetEnumerator() |
+                        Where-Object { $_.Path -eq $path }
+                    if ($null -ne $node) { $owaRootPaths += $node.Path }
+                }
+            }
+
+            # Only want to enter here if we don't have any IIS settings in the appHostConfig present. Otherwise, we might have something to fix.
+            if ($expectedIISObjectsPresent.Count -eq 0 -and
+                $null -eq $locationPaths -and
+                $null -eq $customMetadataPaths -and
+                $owaRootPaths.Count -eq 0 ) {
                 if ($null -ne $adObject) {
-                    New-TestResult @resultParams -Result "Failed" -Details "Virtual directory `"$($expectedVdir.DirectoryName)`" exists in AD but not in IIS."
+                    New-TestResult @resultParams -Result "Failed" -Details "Virtual directory `"$($expectedVDir.DirectoryName)`" exists in AD but not in IIS."
                     # Should we say to delete the AD object? What if it's PushNotifications?
                 } else {
-                    New-TestResult @resultParams -Result "Information" -Details "$($expectedVdir.DirectoryName) not found. This might be expected."
+                    New-TestResult @resultParams -Result "Information" -Details "$($expectedVDir.DirectoryName) not found. This might be expected."
                     # If there are no IIS objects and no AD object, then the state is consistent.
                     # Do we know when this is expected vs when we need to run New-VirtualDirectory?
                 }
-            } elseif ($expectedIISObjectsMissing.Count -gt 0) {
-                New-TestResult @resultParams -Result "Failed" -Details "Partial IIS objects exist for `"$($expectedVdir.DirectoryName)`"."
-                $fixesPerformed = $true
+            } elseif ($expectedIISObjectsMissing.Count -gt 0 -or
+                $null -eq $adObject) {
 
-                $expectedIISObjectsPresent | ForEach-Object {
-                    $nodeToRemove = $appHostConfig.SelectSingleNode("/configuration/system.applicationHost/sites/site[@name = '$siteName']/application[@path = '$_']")
-                    $nodeToRemove.ParentNode.RemoveChild($nodeToRemove) | Out-Null
+                # Missing some critical information from IIS or the object is removed from AD
+                # need to remove from a few different locations to allow New-*VirtualDirectory to work
+                if ($expectedIISObjectsMissing.Count -gt 0) {
+                    New-TestResult @resultParams -Result "Failed" -Details "Partial IIS objects exist for `"$($expectedVDir.DirectoryName)`"."
+                } else {
+                    New-TestResult @resultParams -Result "Failed" -Details "Full IIS Object exists for `"$($expectedVDir.DirectoryName)`", but doesn't exist in AD."
+                }
 
-                    if ($null -ne $adObject) {
-                        New-TestResult @resultParams -Result "Warning" -Details "Only AD object is present for $($expectedVdir.DirectoryName)"
-                        # Should we say to delete the AD object?
+                if ($expectedIISObjectsMissing.Count -gt 0) {
+                    $fixesPerformed = $true
+                    $expectedIISObjectsPresent | ForEach-Object {
+                        Write-Verbose "Removing Node for configuration site $siteName path $_"
+                        $nodeToRemove = $appHostConfig.SelectSingleNode("/configuration/system.applicationHost/sites/site[@name = '$siteName']/application[@path = '$_']")
+                        $nodeToRemove.ParentNode.RemoveChild($nodeToRemove) | Out-Null
                     }
+                }
+
+                if ($null -ne $locationPaths) {
+                    $fixesPerformed = $true
+                    $locationPaths | ForEach-Object {
+                        Write-Verbose "Removing node for location at path $_"
+                        $nodeToRemove = $appHostConfig.SelectSingleNode("/configuration/location[@path = '$_']")
+                        $nodeToRemove.ParentNode.RemoveChild($nodeToRemove) | Out-Null
+                    }
+                }
+
+                if ($null -ne $customMetadataPaths) {
+                    $fixesPerformed = $true
+                    $customMetadataPaths | ForEach-Object {
+                        Write-Verbose "Removing node for customMetadata at path $_"
+                        $nodeToRemove = $appHostConfig.SelectSingleNode("/configuration/system.applicationHost/customMetadata/key[@path = '$_']")
+                        $nodeToRemove.ParentNode.RemoveChild($nodeToRemove) | Out-Null
+                    }
+                }
+
+                if ($owaRootPaths.Count -gt 0) {
+                    $fixesPerformed = $true
+                    $owaRootPaths | ForEach-Object {
+                        Write-Verbose "Removing node for special OWA / at path $_"
+                        $nodeToRemove = $appHostConfig.SelectSingleNode("/configuration/system.applicationHost/sites/site[@name = '$siteName']/application[@path = '/']/virtualDirectory[@path = '$_']")
+                        $nodeToRemove.ParentNode.RemoveChild($nodeToRemove) | Out-Null
+                    }
+                }
+
+                if ($null -ne $adObject) {
+                    New-TestResult @resultParams -Result "Warning" -Details "Only AD object is present for $($expectedVDir.DirectoryName)"
+                    # Should we say to delete the AD object?
                 }
             }
         }

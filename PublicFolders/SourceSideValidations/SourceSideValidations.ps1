@@ -42,8 +42,12 @@ param (
 . $PSScriptRoot\Tests\Permission\AllFunctions.ps1
 . $PSScriptRoot\Get-FolderData.ps1
 . $PSScriptRoot\JobQueue.ps1
-. $PSScriptRoot\..\..\Shared\Test-ScriptVersion.ps1
+. $PSScriptRoot\..\..\Shared\ScriptUpdateFunctions\Test-ScriptVersion.ps1
 . $PSScriptRoot\..\..\Shared\Out-Columns.ps1
+. $PSScriptRoot\..\..\Shared\Confirm-ExchangeShell.ps1
+
+# For HashSet support
+Add-Type -AssemblyName System.Core -ErrorAction Stop
 
 try {
     if (-not $SkipVersionCheck) {
@@ -89,6 +93,15 @@ try {
     }
 
     if ($RemoveInvalidPermissions) {
+        $shell = Confirm-ExchangeShell
+
+        if (-not $shell.EMS) {
+            Write-Host "The -RemoveInvalidPermissions switch must be used from Exchange Management Shell. If you are using EMS,"
+            Write-Host "then there may be an issue with the Auth Certificate or some other issue preventing PowerShell serialization."
+            Write-Host "Cannot continue."
+            return
+        }
+
         if (-not (Test-Path $ResultsFile)) {
             Write-Error "File not found: $ResultsFile. Please specify -ResultsFile or run without -RemoveInvalidPermissions to generate a results file."
         } else {
@@ -114,29 +127,45 @@ try {
 
     Write-Progress @progressParams -Status "Step 1 of 6"
 
+    $mailboxToServerMap = @{}
+
+    # Validate that all PF mailboxes are available
+    $anyPFMailboxUnavailable = $false
+    $pfMailboxes = Get-Mailbox -PublicFolder
+    foreach ($mailbox in $pfMailboxes) {
+        try {
+            $db = Get-MailboxDatabase $mailbox.Database -Status
+            if ($db.Mounted) {
+                $mailboxToServerMap[$mailbox.DisplayName] = $db.Server
+            } else {
+                Write-Warning "Database $db is not mounted. This database holds PF mailbox $mailbox and must be mounted."
+                $anyPFMailboxUnavailable = $true
+            }
+        } catch {
+            Write-Error $_
+            $anyPFMailboxUnavailable = $true
+        }
+    }
+
     $folderData = Get-FolderData -StartFresh $StartFresh -SlowTraversal $SlowTraversal
 
     if ($folderData.IpmSubtree.Count -lt 1) {
         return
     }
 
-    $script:anyDatabaseDown = $false
-    Get-Mailbox -PublicFolder | ForEach-Object {
-        try {
-            $db = Get-MailboxDatabase $_.Database -Status
-            if ($db.Mounted) {
-                $folderData.MailboxToServerMap[$_.DisplayName] = $db.Server
-            } else {
-                Write-Error "Database $db is not mounted. This database holds PF mailbox $_ and must be mounted."
-                $script:anyDatabaseDown = $true
-            }
-        } catch {
-            Write-Error $_
-            $script:anyDatabaseDown = $true
+    $folderData.MailboxToServerMap = $mailboxToServerMap
+
+    # Validate that all content mailboxes exist
+    $ipmSubtreeByMailboxGuid = $folderData.IpmSubtree | Group-Object ContentMailboxGuid
+    foreach ($group in $ipmSubtreeByMailboxGuid) {
+        $mailbox = Get-Mailbox -PublicFolder $group.Name -ErrorAction SilentlyContinue
+        if ($null -eq $mailbox) {
+            Write-Warning "Content Mailbox $($group.Name) not found. $($group.Count) folders point to this invalid mailbox."
+            $anyPFMailboxUnavailable = $true
         }
     }
 
-    if ($script:anyDatabaseDown) {
+    if ($anyPFMailboxUnavailable) {
         Write-Host "One or more PF mailboxes cannot be reached. Unable to proceed."
         return
     }
@@ -151,14 +180,14 @@ try {
     }
 
     if ($folderData.Errors.Count -gt 0) {
-        $folderData.Errors | Export-Csv $ResultsFile -NoTypeInformation
+        $folderData.Errors | Export-Csv $ResultsFile -NoTypeInformation -Encoding UTF8
     }
 
     if ("Dumpsters" -in $Tests) {
         Write-Progress @progressParams -Status "Step 2 of 6"
 
         $badDumpsters = Test-DumpsterMapping -FolderData $folderData
-        $badDumpsters | Export-Csv $ResultsFile -NoTypeInformation -Append
+        $badDumpsters | Export-Csv $ResultsFile -NoTypeInformation -Append -Encoding UTF8
     }
 
     if ("Limits" -in $Tests) {
@@ -166,29 +195,31 @@ try {
 
         # This test emits results in a weird order, so sort them.
         $limitsExceeded = Test-FolderLimit -FolderData $folderData | Sort-Object FolderIdentity
-        $limitsExceeded | Export-Csv $ResultsFile -NoTypeInformation -Append
+        $limitsExceeded | Export-Csv $ResultsFile -NoTypeInformation -Append -Encoding UTF8
     }
 
     if ("Names" -in $Tests) {
         Write-Progress @progressParams -Status "Step 4 of 6"
 
         $badNames = Test-FolderName -FolderData $folderData
-        $badNames | Export-Csv $ResultsFile -NoTypeInformation -Append
+        $badNames | Export-Csv $ResultsFile -NoTypeInformation -Append -Encoding UTF8
     }
 
     if ("MailEnabled" -in $Tests) {
         Write-Progress @progressParams -Status "Step 5 of 6"
 
         $badMailEnabled = Test-MailEnabledFolder -FolderData $folderData
-        $badMailEnabled | Export-Csv $ResultsFile -NoTypeInformation -Append
+        $badMailEnabled | Export-Csv $ResultsFile -NoTypeInformation -Append -Encoding UTF8
     }
 
     if ("Permissions" -in $Tests) {
         Write-Progress @progressParams -Status "Step 6 of 6"
 
         $badPermissions = Test-Permission -FolderData $folderData
-        $badPermissions | Export-Csv $ResultsFile -NoTypeInformation -Append
+        $badPermissions | Export-Csv $ResultsFile -NoTypeInformation -Append -Encoding UTF8
     }
+
+    Write-Progress @progressParams -Completed
 
     # Output the results
 
@@ -210,8 +241,5 @@ try {
     Write-Host "SourceSideValidations complete. Total duration" ($endTime - $startTime)
 } finally {
     Write-Host
-    Write-Host "Liked the script? Visit " -NoNewline
-    Write-Host "https://aka.ms/SSVFeedback" -ForegroundColor Green -NoNewline
-    Write-Host " to rate the script or provide feedback."
-    Write-Host
+    Write-Host "Liked the script or had a problem? Let us know at ExToolsFeedback@microsoft.com"
 }

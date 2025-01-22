@@ -3,7 +3,8 @@
 
 . $PSScriptRoot\..\New-ActionPlan.ps1
 . $PSScriptRoot\..\New-ErrorContext.ps1
-Function Test-VirtualDirectoryFailure {
+. $PSScriptRoot\..\Test-SetupAssist.ps1
+function Test-VirtualDirectoryFailure {
     [CmdletBinding()]
     param(
         [Parameter(ValueFromPipeline = $true)]
@@ -30,11 +31,11 @@ Function Test-VirtualDirectoryFailure {
         }
 
         $selectString = $errorContext | Select-String -Pattern "\[ERROR\] Process execution failed with exit code"
-        $appCmd = $errorContext | Select-String -Pattern "System32\\inetsrv\\appcmd.exe"
+        $appCmd = $errorContext | Select-String -Pattern "System32\\inetSrv\\appCmd.exe"
 
         if ($null -ne $selectString -and
             $null -ne $appCmd) {
-            Write-Verbose "Found issue virtual directory - appcmd.exe failure"
+            Write-Verbose "Found issue virtual directory - appCmd.exe failure"
             return
         }
 
@@ -46,9 +47,15 @@ Function Test-VirtualDirectoryFailure {
             $errorContext |
                 New-ErrorContext
 
-            New-ActionPlan @(
-                "Run SetupAssist on the server and address the issues it calls out with the virtual directories."
-            )
+            if ((Test-SetupAssist)) {
+                New-ActionPlan @(
+                    "Look at the action plan from 'Virtual Directory Configuration' test from above."
+                )
+            } else {
+                New-ActionPlan @(
+                    "Run SetupAssist on the server and address the issues it calls out with the virtual directories."
+                )
+            }
         }
     }
 }

@@ -1,58 +1,60 @@
 ﻿# Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-Function Get-ServerObjects {
+. $PSScriptRoot\Get-ExchangeBasicServerObject.ps1
+. $PSScriptRoot\Get-TransportLoggingInformationPerServer.ps1
+function Get-ServerObjects {
     param(
         [Parameter(Mandatory = $true)][Array]$ValidServers
     )
 
-    Write-ScriptDebug ("Function Enter: Get-ServerObjects")
-    Write-ScriptDebug ("Passed: {0} number of Servers" -f $ValidServers.Count)
-    $svrsObject = @()
+    Write-Verbose ("Function Enter: Get-ServerObjects")
+    Write-Verbose ("Passed: {0} number of Servers" -f $ValidServers.Count)
+    $serversObject = @()
     $validServersList = @()
     foreach ($svr in $ValidServers) {
-        Write-ScriptDebug ("Working on Server {0}" -f $svr)
+        Write-Verbose ("Working on Server {0}" -f $svr)
 
-        $sobj = Get-ExchangeBasicServerObject -ServerName $svr
-        if ($sobj -eq $true) {
-            Write-ScriptHost -WriteString ("Removing Server {0} from the list" -f $svr) -ForegroundColor "Red" -ShowServer $false
+        $serverObj = Get-ExchangeBasicServerObject -ServerName $svr
+        if ($serverObj -eq $true) {
+            Write-Host "Removing Server $svr from the list" -ForegroundColor "Red"
             continue
         } else {
             $validServersList += $svr
         }
 
-        if ($Script:AnyTransportSwitchesEnabled -and ($sobj.Hub -or $sobj.Version -ge 15)) {
-            $sobj | Add-Member -Name TransportInfoCollect -MemberType NoteProperty -Value $true
-            $sobj | Add-Member -Name TransportInfo -MemberType NoteProperty -Value `
+        if ($Script:AnyTransportSwitchesEnabled -and ($serverObj.Hub -or $serverObj.Version -ge 15)) {
+            $serverObj | Add-Member -Name TransportInfoCollect -MemberType NoteProperty -Value $true
+            $serverObj | Add-Member -Name TransportInfo -MemberType NoteProperty -Value `
             (Get-TransportLoggingInformationPerServer -Server $svr `
-                    -version $sobj.Version `
-                    -EdgeServer $sobj.Edge `
-                    -CASOnly $sobj.CASOnly `
-                    -MailboxOnly $sobj.MailboxOnly)
+                    -version $serverObj.Version `
+                    -EdgeServer $serverObj.Edge `
+                    -CASOnly $serverObj.CASOnly `
+                    -MailboxOnly $serverObj.MailboxOnly)
         } else {
-            $sobj | Add-Member -Name TransportInfoCollect -MemberType NoteProperty -Value $false
+            $serverObj | Add-Member -Name TransportInfoCollect -MemberType NoteProperty -Value $false
         }
 
         if ($PopLogs -and
             !$Script:EdgeRoleDetected) {
-            $sobj | Add-Member -Name PopLogsLocation -MemberType NoteProperty -Value ((Get-PopSettings -Server $svr).LogFileLocation)
+            $serverObj | Add-Member -Name PopLogsLocation -MemberType NoteProperty -Value ((Get-PopSettings -Server $svr).LogFileLocation)
         }
 
         if ($ImapLogs -and
             !$Script:EdgeRoleDetected) {
-            $sobj | Add-Member -Name ImapLogsLocation -MemberType NoteProperty -Value ((Get-ImapSettings -Server $svr).LogFileLocation)
+            $serverObj | Add-Member -Name ImapLogsLocation -MemberType NoteProperty -Value ((Get-ImapSettings -Server $svr).LogFileLocation)
         }
 
-        $svrsObject += $sobj
+        $serversObject += $serverObj
     }
 
-    if (($null -eq $svrsObject) -or
-        ($svrsObject.Count -eq 0)) {
-        Write-ScriptHost -WriteString ("Something wrong happened in Get-ServerObjects stopping script") -ShowServer $false -ForegroundColor "Red"
+    if (($null -eq $serversObject) -or
+        ($serversObject.Count -eq 0)) {
+        Write-Host "Something wrong happened in Get-ServerObjects stopping script" -ForegroundColor "Red"
         exit
     }
     #Set the valid servers
     $Script:ValidServers = $validServersList
-    Write-ScriptDebug("Function Exit: Get-ServerObjects")
-    Return $svrsObject
+    Write-Verbose("Function Exit: Get-ServerObjects")
+    return $serversObject
 }

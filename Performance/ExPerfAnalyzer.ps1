@@ -3,7 +3,7 @@
 
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '', Justification = 'Vars are in use')]
 [CmdletBinding()]
-Param(
+param(
     #[Parameter(Mandatory=$true,ParameterSetName="FileDirectory")][string]$PerfmonFileDirectory,
     [Parameter(Mandatory = $false, ParameterSetName = "FileDirectory")]
     [Parameter(ParameterSetName = "SingleFile")][int64]$MaxSamples = [Int64]::MaxValue,
@@ -190,7 +190,6 @@ Main Object class
 
 #>
 
-
 <#
 Format of the xml counters
 <Counter Name = "">
@@ -203,7 +202,7 @@ Format of the xml counters
 	</DisplayOptions>
 	<Threshold>
 		<Average></Average>
-		<Maxvalue></Maxvalue>
+		<MaxValue></MaxValue>
 		<WarningValue></WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -222,7 +221,7 @@ Format of the xml counters
 	</DisplayOptions>
 	<Threshold>
 		<Average>90000</Average>
-		<Maxvalue>200000</Maxvalue>
+		<MaxValue>200000</MaxValue>
 		<WarningValue>150000</WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -246,7 +245,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average>0.020</Average>
-		<Maxvalue>0.001</Maxvalue>
+		<MaxValue>0.001</MaxValue>
 		<WarningValue>0.001</WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -263,7 +262,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average>0.020</Average>
-		<Maxvalue>0.001</Maxvalue>
+		<MaxValue>0.001</MaxValue>
 		<WarningValue>0.001</WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -280,7 +279,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average>0</Average>
-		<Maxvalue>0</Maxvalue>
+		<MaxValue>0</MaxValue>
 		<WarningValue>0</WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -297,7 +296,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average>0</Average>
-		<Maxvalue>0</Maxvalue>
+		<MaxValue>0</MaxValue>
 		<WarningValue>0</WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -314,7 +313,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average>0</Average>
-		<Maxvalue>0</Maxvalue>
+		<MaxValue>0</MaxValue>
 		<WarningValue>0</WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -331,7 +330,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average>0</Average>
-		<Maxvalue>0</Maxvalue>
+		<MaxValue>0</MaxValue>
 		<WarningValue>0</WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -348,7 +347,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average>0</Average>
-		<Maxvalue>0</Maxvalue>
+		<MaxValue>0</MaxValue>
 		<WarningValue>0</WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -365,7 +364,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average>1536</Average>
-		<Maxvalue>512</Maxvalue>
+		<MaxValue>512</MaxValue>
 		<WarningValue>1024</WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -382,7 +381,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average>75</Average>
-		<Maxvalue>95</Maxvalue>
+		<MaxValue>95</MaxValue>
 		<WarningValue>85</WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -399,7 +398,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average></Average>
-		<Maxvalue></Maxvalue>
+		<MaxValue></MaxValue>
 		<WarningValue></WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -416,7 +415,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average></Average>
-		<Maxvalue></Maxvalue>
+		<MaxValue></MaxValue>
 		<WarningValue></WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -433,7 +432,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average>2</Average>
-		<Maxvalue>200</Maxvalue>
+		<MaxValue>200</MaxValue>
 		<WarningValue>120</WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -450,7 +449,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average></Average>
-		<Maxvalue></Maxvalue>
+		<MaxValue></MaxValue>
 		<WarningValue></WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -467,7 +466,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average></Average>
-		<Maxvalue></Maxvalue>
+		<MaxValue></MaxValue>
 		<WarningValue></WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -475,7 +474,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</MonitorChecks>
 </Counter>
 <Counter Name = "\ASP.NET Apps v4.0.30319(*)\Requests Executing">
-	<Category>ASPNET</Category>
+	<Category>AspNet</Category>
 	<CounterSetName>ASP.NET Apps v4.0.30319</CounterSetName>
 	<CounterName>Requests Executing</CounterName>
 	<DisplayOptions>
@@ -484,7 +483,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average></Average>
-		<Maxvalue></Maxvalue>
+		<MaxValue></MaxValue>
 		<WarningValue></WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -501,7 +500,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average></Average>
-		<Maxvalue></Maxvalue>
+		<MaxValue></MaxValue>
 		<WarningValue></WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -518,7 +517,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average></Average>
-		<Maxvalue></Maxvalue>
+		<MaxValue></MaxValue>
 		<WarningValue></WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -535,7 +534,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average></Average>
-		<Maxvalue></Maxvalue>
+		<MaxValue></MaxValue>
 		<WarningValue></WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -552,7 +551,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average></Average>
-		<Maxvalue></Maxvalue>
+		<MaxValue></MaxValue>
 		<WarningValue></WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -569,7 +568,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average></Average>
-		<Maxvalue></Maxvalue>
+		<MaxValue></MaxValue>
 		<WarningValue></WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -586,7 +585,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average></Average>
-		<Maxvalue></Maxvalue>
+		<MaxValue></MaxValue>
 		<WarningValue></WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -603,7 +602,7 @@ $xmlCountersToAnalyze = [xml]@"
 	</DisplayOptions>
 	<Threshold>
 		<Average></Average>
-		<Maxvalue></Maxvalue>
+		<MaxValue></MaxValue>
 		<WarningValue></WarningValue>
 	</Threshold>
 	<MonitorChecks>
@@ -615,7 +614,7 @@ $xmlCountersToAnalyze = [xml]@"
 
 #"\\*\LogicalDisk(*)\Avg. Disk sec/Read","\\*\LogicalDisk(*)\Avg. Disk sec/Write","\\*\LogicalDisk(*)\Avg. Disk sec/Transfer","\\*\LogicalDisk(*)\Disk Transfers/sec","\\*\LogicalDisk(*)\Disk Bytes/sec","\\*\LogicalDisk(*)\Avg. Disk Queue Length","\\*\LogicalDisk(*)\% Idle Time","\\*\Processor(_Total)\% Processor Time","\\*\System\Processor Queue Length","\\*\System\Context Switches/sec","\\*\Memory\Available MBytes","\\*\Netlogon(*)\*","\\*\Processor Information(*)\% of Maximum Frequency"
 #"\LogicalDisk(*)\Avg. Disk sec/Read","\LogicalDisk(*)\Avg. Disk sec/Write","\LogicalDisk(*)\Avg. Disk sec/Transfer","\LogicalDisk(*)\Disk Transfers/sec","\LogicalDisk(*)\Disk Bytes/sec","\LogicalDisk(*)\Avg. Disk Queue Length","\LogicalDisk(*)\% Idle Time","\Processor(_Total)\% Processor Time","\System\Processor Queue Length","\System\Context Switches/sec","\Memory\Available MBytes","\Netlogon(*)\*","\Processor Information(*)\% of Maximum Frequency"
-Function Get-PerformanceDataFromFileLocal {
+function Get-PerformanceDataFromFileLocal {
     [CmdletBinding()]
     [OutputType([System.Collections.Generic.List[PerformanceHealth.PerfFileDataInfo]])]
     param(
@@ -661,29 +660,29 @@ Function Get-PerformanceDataFromFileLocal {
     return $aPerfFileDataInfo
 }
 
-Function Convert-PerformanceCounterSampleObjectToServerPerformanceObjectWithQuickAnalyze {
+function Convert-PerformanceCounterSampleObjectToServerPerformanceObjectWithQuickAnalyze {
     [CmdletBinding()]
     [OutputType([System.Collections.Generic.List[System.Object]])]
     param(
         [Parameter(Mandatory = $true)][Array]$RawData,
         [Parameter(Mandatory = $true)][xml]$XmlList,
         [Parameter(Mandatory = $false)][string]$FileName,
-        [Parameter(Mandatory = $false)][timespan]$ReadTimeSpan
+        [Parameter(Mandatory = $false)][TimeSpan]$ReadTimeSpan
     )
     Write-Verbose("Calling Convert-PerformanceCounterSampleObjectToServerPerformanceObjectWithQuickAnalyze")
     $measure_gData = Measure-Command { $gData = $RawData | Group-Object Path }
     Write-Verbose("Grouped Raw Data in {0} seconds" -f $measure_gData.TotalSeconds)
     Write-Verbose("There are {0} different paths detected" -f $gData.Count)
 
-    Function Get-FullCounterNameObject {
+    function Get-FullCounterNameObject {
         param(
             [Parameter(Mandatory = $true)][object]$PerformanceCounterSample
         )
 
         $FullCounterSamplePath = $PerformanceCounterSample.Path
-        #\\adt-e2k13aio1\logicaldisk(harddiskvolume1)\avg. disk sec/read
-        $iEndOfServerIndex = $FullCounterSamplePath.IndexOf("\", 2) #\\adt-e2k13aio1 <> \logicaldisk(harddiskvolume1)\avg. disk sec/read
-        $iStartOfCounterIndex = $FullCounterSamplePath.LastIndexOf("\") + 1#\\adt-e2k13aio1\logicaldisk(harddiskvolume1)\ <> avg. disk sec/read
+        #\\adt-e2k13aio1\LogicalDisk(HardDiskVolume1)\avg. disk sec/read
+        $iEndOfServerIndex = $FullCounterSamplePath.IndexOf("\", 2) #\\adt-e2k13aio1 <> \LogicalDisk(HardDiskVolume1)\avg. disk sec/read
+        $iStartOfCounterIndex = $FullCounterSamplePath.LastIndexOf("\") + 1#\\adt-e2k13aio1\LogicalDisk(HardDiskVolume1)\ <> avg. disk sec/read
         $iEndOfCounterObjectIndex = $FullCounterSamplePath.IndexOf("(")
         if ($iEndOfCounterObjectIndex -eq -1) { $iEndOfCounterObjectIndex = $FullCounterSamplePath.LastIndexOf("\") }
         $obj = New-Object PerformanceHealth.CounterNameObject
@@ -701,7 +700,7 @@ Function Convert-PerformanceCounterSampleObjectToServerPerformanceObjectWithQuic
         return $obj
     }
 
-    Function Build-ServerPerformanceObject_CounterData {
+    function Build-ServerPerformanceObject_CounterData {
         param(
             [Parameter(Mandatory = $true)][object]$CounterNameObject
         )
@@ -725,7 +724,7 @@ Function Convert-PerformanceCounterSampleObjectToServerPerformanceObjectWithQuic
         return $counterDataPerfObject
     }
 
-    Function Build-ServerPerformanceObject_Server {
+    function Build-ServerPerformanceObject_Server {
         param(
             [Parameter(Mandatory = $true)][object]$CounterNameObject
         )
@@ -762,14 +761,14 @@ Function Convert-PerformanceCounterSampleObjectToServerPerformanceObjectWithQuic
                 $counterDataObj.DisplayOptions.FormatDivider = $xmlCounter.DisplayOptions.FormatDivider
                 $counterDataObj.DisplayOptions.FormatString = $xmlCounter.DisplayOptions.FormatString
                 #If we find it, we shouldn't need to loop through any longer and we can break out of the XML loop
-                break;
+                break
             }
         }
 
         #Now we need to quick Analyze the data sets while we are in here.
         # $measured = $counterObj.RawData | Measure-Object -Property CookedValue -Maximum -Minimum -Average   ## Bill Long removed this, checking with him to verify why this change was made.
-        $min = [Int64]::MaxValue;
-        $max = [Int64]::MinValue;
+        $min = [Int64]::MaxValue
+        $max = [Int64]::MinValue
         foreach ($sample in $counterDataObj.RawData) {
             if ($sample.CookedValue -lt $min) { $min = $sample.CookedValue }
             if ($sample.CookedValue -gt $max) { $max = $sample.CookedValue }
@@ -818,7 +817,7 @@ Function Convert-PerformanceCounterSampleObjectToServerPerformanceObjectWithQuic
     return $MasterObject
 }
 
-Function Write-QuickSummaryDetails {
+function Write-QuickSummaryDetails {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)][Object]$ServerObject
@@ -829,7 +828,7 @@ Function Write-QuickSummaryDetails {
     $strLength_detail = 48
     $strLength_columnWidth = 12
 
-    Function Add-Line {
+    function Add-Line {
         param(
             [Parameter(Mandatory = $true)][string]$New_line
         )
@@ -854,7 +853,7 @@ Function Write-QuickSummaryDetails {
 
         foreach ($gCategory in $groupCounterCategory) {
             Add-Line(" ")
-            Add-Line("{0,-$strLength_detail} {1,$strLength_columnWidth} {2,$strLength_columnWidth} {3,$strLength_columnWidth}" -f $gcategory.Name, "Min", "Max", "Avg")
+            Add-Line("{0,-$strLength_detail} {1,$strLength_columnWidth} {2,$strLength_columnWidth} {3,$strLength_columnWidth}" -f $gCategory.Name, "Min", "Max", "Avg")
             Add-Line("==========================================================================================")
             #because these are all based off the sum category that could contain different Counter Object Names, we are going to group by that first then the actual counter
             $gObjectCounter = $gCategory.Group | Group-Object ObjectName
@@ -889,7 +888,7 @@ Function Write-QuickSummaryDetails {
         foreach ($gCategory in $groupCounterCategoryProcess) {
             $gCounterNameObject = $gCategory.Group | Group-Object CounterName
             Add-Line(" ")
-            Add-Line("{0,-$strLength_detail} {1,$strLength_columnWidth} {2,$strLength_columnWidth} {3,$strLength_columnWidth}" -f $gcategory.Name, "Min", "Max", "Avg")
+            Add-Line("{0,-$strLength_detail} {1,$strLength_columnWidth} {2,$strLength_columnWidth} {3,$strLength_columnWidth}" -f $gCategory.Name, "Min", "Max", "Avg")
             Add-Line("==========================================================================================")
 
             foreach ($counterGroup in $gCounterNameObject) {
@@ -940,15 +939,13 @@ Function Write-QuickSummaryDetails {
         Add-Line("Analysis Stats")
         Add-Line("================")
         Add-Line("{0,-24} : {1}" -f "Report Generated by", "ExPerfAnalyzer.ps1 ")
-        Add-Line("{0,-24} : {1}" -f "Written by", "Matthew Huynh (mahuynh@microsoft.com) & David Paulson (dpaul@microsoft.com)")
-        Add-Line("{0,-24} : {1}" -f "Contributor", "Bill Long")
         $currentTime = [dateTime]::Now
         Add-Line("{0,-24} : {1}" -f "Generated On", ($currentTime.ToShortDateString() + " " + $currentTime.ToShortTimeString()))
         $totalCounterProcessed = $ServerObject.CounterData.Count
         $totalSamples = $ServerObject.CounterData.RawData.Count
         Add-Line("{0,-24} : {1:N0}" -f "Total Counters Processed", $totalCounterProcessed)
         Add-Line("{0,-24} : {1:N0}" -f "Total Samples", $totalSamples)
-        $pTime = (New-TimeSpan $($script:processStartTime) $([datetime]::Now))
+        $pTime = (New-TimeSpan $($script:processStartTime) $([DateTime]::Now))
         Add-Line("{0,-24} : {1:N1}s" -f "Total File Read Time", ($ServerObject.ReadTime.TotalSeconds))
         Add-Line("{0,-24} : {1:N1}s" -f "Total Processing Time", $pTime.TotalSeconds)
         Add-Line("{0,-24} : {1:N5}s" -f "Samples Processed/sec", ([double]$totalSamples / $pTime.TotalSeconds))
@@ -958,7 +955,7 @@ Function Write-QuickSummaryDetails {
     &$outFile
 }
 
-Function Get-CountersFromXml {
+function Get-CountersFromXml {
     param(
         [Parameter(Mandatory = $true)][xml]$xmlCounters,
         [Parameter(Mandatory = $false)][bool]$IncludeWildForServers = $false
@@ -977,12 +974,18 @@ Function Get-CountersFromXml {
     return $aCounters
 }
 
-Function Main {
+function Main {
+
+    # Currently no support for core with this script.
+    if ($PSVersionTable.PSEdition -eq "Core") {
+        Write-Error "Unable to use PowerShell Core with this script."
+        exit
+    }
 
     $script:processStartTime = [System.DateTime]::Now
 
     #determine the logic we want out of the script
-    Switch ($PSCmdlet.ParameterSetName) {
+    switch ($PSCmdlet.ParameterSetName) {
         "FileDirectory" {
             Write-Verbose("File Directory Option detected")
             if (-not (Test-Path $PerfmonFileDirectory)) {
@@ -1017,7 +1020,7 @@ Function Main {
                     break
                 }
             }
-            break;
+            break
         }
         "SingleFile" {
             if (-not (Test-Path $PerfmonFile)) {
@@ -1029,7 +1032,7 @@ Function Main {
                 exit
             }
             Write-Host ("Single file mode: processing '{0}'" -f $PerfmonFile)
-            $script:perffromlocalfile = Measure-Command { $rawLocalData = Get-PerformanceDataFromFileLocal -FullPath $PerfmonFile `
+            $script:perfFromLocalFile = Measure-Command { $rawLocalData = Get-PerformanceDataFromFileLocal -FullPath $PerfmonFile `
                     -Counters (Get-CountersFromXml -xmlCounters $xmlCountersToAnalyze -IncludeWildForServers $true) `
                     -MaxSamples $MaxSamples `
                     -StartTime $StartTime `

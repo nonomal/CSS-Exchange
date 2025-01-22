@@ -32,12 +32,24 @@
         label {
             color: black;
         }
+
+        #scenariosDiv {
+            column-count: 5;
+        }
+
+        .btn {
+            margin-top: 15px;
+        }
+
+        .code {
+            padding: 20px;
+        }
     </style>
 </head>
 
 <body onload="showTags()">
     <div class="container">
-        <div class="row toolbar">
+        <div class="row toolbar tagSelectionElement">
             <div class="input-field col s3">
                 <input id="categoryFilter" onchange="categoryFilterChanged(event)"
                     onkeyup="categoryFilterChanged(event)" />
@@ -47,19 +59,66 @@
                 <input id="tagFilter" onchange="tagFilterChanged(event)" onkeyup="tagFilterChanged(event)" />
                 <label for="tagFilter" class="active">Tag Filter</label>
             </div>
-            <label for="showOnlySelectedCheckbox" class="col s3">
-                <input id="showOnlySelectedCheckbox" class="filled-in" type="checkbox"
-                    onchange="updateVisibility(event)" />
-                <span>Only Show Selected</span>
-            </label>
+            <div class="col s3">
+                <label for="showOnlySelectedCheckbox">
+                    <input id="showOnlySelectedCheckbox" class="filled-in" type="checkbox"
+                        onchange="updateVisibility(event)" />
+                    <span>Only Show Selected</span>
+                </label>
+                <button class="btn waves-effect waves-light" onclick="clearAllSelections()">Clear All
+                    Selections</button>
+            </div>
             <button class="btn waves-effect waves-light col s3" onclick="save()">Save</button>
         </div>
 
-        <div id="checkboxesDiv">
+        <div class="row tagSelectionElement">
+            <div class="col s12">
+                <h5>Scenarios</h5>
+            </div>
+        </div>
+        <div class="row tagSelectionElement" id="scenariosDiv">
 
         </div>
+
+        <div class="row tagSelectionElement">
+            <div class="col s12">
+                <h5>Tags</h5>
+            </div>
+        </div>
+        <div class="tagSelectionElement" id="checkboxesDiv">
+
+        </div>
+        <div class="row hidden" id="syntaxDiv">
+            <p>The trace can be created, deleted, started, and stopped from the command line or PowerShell.</p>
+            <p>To delete a previously existing data collector set:</p>
+            <p class="black green-text code">
+                <code>logman delete ExchangeDebugTraces</code>
+            </p>
+            <p>To create a data collector which is non-circular and stops at 1 GB:</p>
+            <p class="black green-text code">
+                <code>logman create trace ExchangeDebugTraces -p "{79bb49e6-2a2c-46e4-9167-fa122525d540}" -o c:\tracing\trace.etl -ow -f bin -max 1024 -mode globalsequence</code>
+            </p>
+            <p>To create a data collector which is circular and stops at 2 GB:</p>
+            <p class="black green-text code">
+                <code>logman create trace ExchangeDebugTraces -p "{79bb49e6-2a2c-46e4-9167-fa122525d540}" -o c:\tracing\trace.etl -ow -f bincirc -max 2048 -mode globalsequence</code>
+            </p>
+            <p>To create a data collector which is non-circular and creates a new file every 512 MB until you stop it manually:</p>
+            <p class="black green-text code">
+                <code>logman create trace ExchangeDebugTraces -p "{79bb49e6-2a2c-46e4-9167-fa122525d540}" -o c:\tracing\trace.etl -ow -f bin -max 512 -cnf 0 -mode globalsequence</code>
+            </p>
+            <p>To start the trace:</p>
+            <p class="black green-text code">
+                <code>logman start ExchangeDebugTraces</code>
+            </p>
+            <p>To stop the trace:</p>
+            <p class="black green-text code">
+                <code>logman stop ExchangeDebugTraces</code>
+            </p>
+            <p>The collector can also be started and stopped from Perfmon.</p>
+        </div>
         <script>
-            var exchange2016Tags = [];
+            var selectionTable = [];
+            var scenarios = {};
 
             function categoryFilterChanged(event) {
                 updateVisibility();
@@ -69,16 +128,56 @@
                 updateVisibility();
             }
 
+            function clearAllSelections(event) {
+                selectionTable.forEach(category => {
+                    category.tags.forEach(tag => {
+                        setSelectedOnTag(tag, false, false);
+                    });
+
+                    checkCategorySelectionState(category);
+                });
+
+                updateVisibility();
+            }
+
             async function save() {
                 const response = await fetch(window.location.href, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(exchange2016Tags, ['name', 'isSelected', 'tags'])
+                    body: JSON.stringify(selectionTable, ['name', 'isSelected', 'tags'])
                 });
 
-                window.close();
+                [...document.getElementsByClassName('tagSelectionElement')].forEach(e => {
+                    e.classList.add('hidden');
+                });
+
+                document.getElementById('syntaxDiv').classList.remove('hidden');
+            }
+
+            function getScenarioNames() {
+                return new Set(selectionTable.flatMap(c => c.tags.flatMap(t => t.scenarios.flatMap(s => s))));
+            }
+
+            function setSelectedOnScenario(scenarioName, selected) {
+                if (scenarios[scenarioName].isSelected != selected) {
+                    scenarios[scenarioName].isSelected = selected;
+
+                    selectionTable.forEach(c => {
+                        c.tags.forEach(t => {
+                            if (t.scenarios.includes(scenarioName)) {
+                                setSelectedOnTag(t, selected, false);
+                            }
+                        });
+
+                        checkCategorySelectionState(c);
+                    });
+
+                    if (document.getElementById('showOnlySelectedCheckbox').checked) {
+                        updateVisibility();
+                    }
+                }
             }
 
             function setSelectedOnCategory(category, selected) {
@@ -102,6 +201,13 @@
                     tag.isSelected = selected;
                     if (tag.element.checked !== selected) {
                         tag.element.checked = selected;
+                    }
+
+                    if (!selected && tag.scenarios.length > 0) {
+                        Object.getOwnPropertyNames(scenarios).forEach(s => {
+                            scenarios[s].isSelected = false;
+                            scenarios[s].element.checked = false;
+                        });
                     }
 
                     if (updateCategoryState) {
@@ -129,7 +235,7 @@
                 let tagFilter = document.getElementById('tagFilter').value.toLowerCase();
                 let onlyShowSelected = document.getElementById('showOnlySelectedCheckbox').checked;
 
-                exchange2016Tags.forEach(category => {
+                selectionTable.forEach(category => {
                     category.tags.forEach(tag => {
                         if ((tagFilter == "" || tag.name.toLowerCase().includes(tagFilter)) && (tag.isSelected || !onlyShowSelected)) {
                             if (tag.element.parentElement.parentElement.classList.contains("hidden")) {
@@ -162,8 +268,11 @@
 
             function showTags() {
                 let newChildElements = [];
+                getScenarioNames().forEach(name => {
+                    scenarios[name] = { isSelected: true, element: null };
+                });
 
-                exchange2016Tags.forEach(category => {
+                selectionTable.forEach(category => {
                     let tagGrid = document.createElement("div");
                     tagGrid.className = "tag-grid";
 
@@ -177,6 +286,12 @@
                         tagElement.className = "filled-in";
                         tagElement.oninput = (event) => setSelectedOnTag(tag, event.srcElement.checked, true);
                         tagElement.checked = tag.isSelected;
+
+                        if (!tag.isSelected && tag.scenarios.length > 0) {
+                            tag.scenarios.forEach(scenarioName => {
+                                scenarios[scenarioName].isSelected = false;
+                            });
+                        }
 
                         let spanElement = document.createElement("span");
                         spanElement.textContent = tag.name;
@@ -193,7 +308,6 @@
                         tag.element = tagElement;
                         tag.category = category;
                     });
-
 
                     let categoryDiv = document.createElement("div");
                     categoryDiv.className = "category";
@@ -222,6 +336,34 @@
 
                 let checkboxesDiv = document.getElementById('checkboxesDiv');
                 checkboxesDiv.append(...newChildElements);
+
+                let scenarioDivElements = [];
+                Object.keys(scenarios).forEach(name => {
+                    let scenarioDiv = document.createElement("div");
+                    scenarioDiv.className = "scenario";
+
+                    let scenarioInput = document.createElement("input");
+                    scenarioInput.id = name;
+                    scenarioInput.type = "checkbox";
+                    scenarioInput.className = "filled-in";
+                    scenarioInput.oninput = (event) => setSelectedOnScenario(name, event.srcElement.checked, true);
+                    scenarioInput.checked = scenarios[name].isSelected;
+
+                    let spanElement = document.createElement("span");
+                    spanElement.textContent = name;
+
+                    let labelElement = document.createElement("label");
+                    labelElement.for = name;
+
+                    labelElement.appendChild(scenarioInput);
+                    labelElement.appendChild(spanElement);
+                    scenarioDiv.appendChild(labelElement);
+                    scenarios[name].element = scenarioInput;
+                    scenarioDivElements.push(scenarioDiv);
+                });
+
+                let scenariosDiv = document.getElementById('scenariosDiv');
+                scenariosDiv.append(...scenarioDivElements);
             }
 
             window.onbeforeunload = () => {

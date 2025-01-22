@@ -1,7 +1,7 @@
 ﻿# Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-. .\Get-StatisticsJob.ps1
+. $PSScriptRoot\Get-StatisticsJob.ps1
 
 function Get-Statistics {
     <#
@@ -46,7 +46,8 @@ function Get-Statistics {
 
                 [Int64]$totalItemSize = -1
                 if ($_.TotalItemSize.ToString() -match "\(([\d|,|.]+) bytes\)") {
-                    $totalItemSize = [Int64]::Parse($Matches[1], "AllowThousands")
+                    $numberString = $Matches[1] -replace "\D", ""
+                    $totalItemSize = [Int64]::Parse($numberString)
                 }
 
                 [PSCustomObject]@{
@@ -60,7 +61,7 @@ function Get-Statistics {
             $jobsToCreate = New-Object 'System.Collections.Generic.Dictionary[string, System.Collections.ArrayList]'
             foreach ($group in $folderData.IpmSubtreeByMailbox) {
                 # MailboxToServerMap is not populated yet, so we can't use it here
-                $server = (Get-Mailbox $group.Name -PublicFolder).ServerName
+                $server = (Get-MailboxDatabase (Get-Mailbox -PublicFolder $group.Name).Database).Server.Name
                 [int]$mailboxBatchCount = ($group.Group.Count / $batchSize) + 1
                 Write-Verbose "Creating $mailboxBatchCount statistics jobs for $($group.Group.Count) folders in mailbox $($group.Name) on server $server."
                 $jobsForThisMailbox = New-Object System.Collections.ArrayList
@@ -98,7 +99,7 @@ function Get-Statistics {
             } while ($jobsAddedThisRound -gt 0)
 
             $hierarchyMailbox = Get-Mailbox -PublicFolder (Get-OrganizationConfig).RootPublicFolderMailbox.ToString()
-            $serverWithHierarchy = $hierarchyMailbox.ServerName
+            $serverWithHierarchy = (Get-MailboxDatabase $hierarchyMailbox.Database).Server.Name
             $retryJobNumber = 1
 
             Wait-QueuedJob | ForEach-Object {
@@ -113,7 +114,7 @@ function Get-Statistics {
                     if ($finishedJob.Server -eq $serverWithHierarchy) {
                         Write-Host "Permanent failure on root mailbox server is not retryable."
                     } else {
-                        $entryIdsProcessed = New-Object 'System.Collections.HashSet[string]'
+                        $entryIdsProcessed = New-Object 'System.Collections.Generic.HashSet[string]'
                         $finishedJob.Statistics | ForEach-Object { [void]$entryIdsProcessed.Add($_.EntryId) }
                         $foldersRemaining = @($finishedJob.Folders | Where-Object { -not $entryIdsProcessed.Contains($_.EntryId) })
                         if ($foldersRemaining.Count -gt 0) {

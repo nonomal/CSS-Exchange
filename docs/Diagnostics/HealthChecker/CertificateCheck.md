@@ -1,10 +1,7 @@
----
-title: Certificate Check
-parent: HealthChecker.ps1
-grand_parent: Diagnostics
----
+# Certificate Check
 
 This check retrieves all certificates from the Exchange server by using the `Get-ExchangeCertificate` cmdlet. We display the following information:
+
 - FriendlyName
 - Thumbprint
 - Lifetime in days
@@ -35,3 +32,4 @@ We also perform the following checks:
 **Included in HTML Report?**
 
 Yes
+

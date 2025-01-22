@@ -3,38 +3,39 @@
 
 . $PSScriptRoot\..\New-TestResult.ps1
 . $PSScriptRoot\..\UserContext\Test-UserGroupMemberOf.ps1
-Function Test-ExchangeADSetupLevel {
+. $PSScriptRoot\..\..\..\Shared\SetupLogReviewerFunctions.ps1
+. $PSScriptRoot\..\..\..\..\Shared\Get-ExchangeBuildVersionInformation.ps1
+function Test-ExchangeADSetupLevel {
 
     # Extract for Pester Testing - Start
-    Function TestPrepareAD {
-        param(
-            [string]$ExchangeVersion
-        )
-        $netDom = netdom query fsmo
+    function TestPrepareAD {
+
+        $forest = [System.DirectoryServices.ActiveDirectory.Domain]::GetComputerDomain().Forest
         $params = @{
             TestName = "Prepare AD Requirements"
             Result   = "Failed"
         }
 
-        if ($null -eq $netDom) {
-            New-TestResult @params -Details "Failed to query FSMO Role"
+        if ($null -eq $forest) {
+            New-TestResult @params -Details "Failed to get current forest"
             return
         }
 
-        $schemaMaster = ($netDom | Select-String "Schema master (.+)").Matches.Groups[1].Value.Trim()
-        $smSite = nltest /server:$schemaMaster /dsgetsite
+        if ($null -eq $forest.SchemaRoleOwner) {
+            New-TestResult @params -Details "Failed to get schema master role owner"
+            return
+        }
 
-        if ($smSite[-1] -eq "The command completed successfully") {
-            $smSite = $smSite[0]
-        } else {
+        $schemaMaster = $forest.SchemaRoleOwner.Name
+        $smSite = $forest.SchemaRoleOwner.SiteName
+
+        if ($null -eq $smSite) {
             $smSite = "Failed to get correct site"
         }
 
-        $localSite = nltest /dsgetsite
-
-        if ($localSite[-1] -eq "The command completed successfully") {
-            $localSite = $localSite[0]
-        } else {
+        try {
+            $localSite = [System.DirectoryServices.ActiveDirectory.ActiveDirectorySite]::GetComputerSite().Name
+        } catch {
             $localSite = "Failed to get correct site"
         }
 
@@ -59,75 +60,128 @@ Function Test-ExchangeADSetupLevel {
             "Local Server Site:    $localSite")
 
         New-TestResult @params -Details $details -ReferenceInfo $runPrepareAD
-        Test-UserGroupMemberOf -PrepareAdRequired $true -PrepareSchemaRequired ($latestExchangeVersion.$ExchangeVersion.UpperRange -ne $currentSchemaValue)
     }
 
-    Function TestMismatchLevel {
+    function TestADLevelToBuildInformation {
+        [CmdletBinding()]
         param(
-            [string]$ExchangeVersion,
-            [object]$ADSetupLevel
-        )
-        $params = @{
-            TestName      = $testName
-            Result        = "Failed"
-            ReferenceInfo = "Mismatch detected `n    More Info: https://docs.microsoft.com/en-us/Exchange/plan-and-deploy/prepare-ad-and-domains?view=exchserver-$ExchangeVersion"
-        }
-        New-TestResult @params -Details ("DN Value: $($ADSetupLevel.Org.DN) Version: $($ADSetupLevel.Org.Value)`n`n" +
-            "DN Value: $($ADSetupLevel.Schema.DN) Version: $($ADSetupLevel.Schema.Value)`n`n" +
-            "DN Value: $($ADSetupLevel.MESO.DN) Version: $($ADSetupLevel.MESO.Value)")
-        TestPrepareAD -ExchangeVersion $ExchangeVersion
-    }
-
-    Function TestReadyLevel {
-        param(
-            [string]$ExchangeVersion,
-            [string]$CULevel
+            [object]$CurrentADLevel, # From GetExchangeADSetupLevel
+            [object]$BuildLevelInformation # From Get-ExchangeBuildVersionInformation
         )
 
-        if ($latestExchangeVersion.$ExchangeVersion.CU -eq $CULevel) { $result = "Passed" } else { $result = "Failed" }
-
         $params = @{
-            TestName      = $testName
-            Result        = $result
-            Details       = "At Exchange $ExchangeVersion $CULevel"
-            ReferenceInfo = "Latest Version is Exchange $ExchangeVersion $($latestExchangeVersion.$ExchangeVersion.CU). More Info: https://aka.ms/SA-ExchangeLatest"
+            TestName      = "Exchange AD Level"
+            Details       = $BuildLevelInformation.FriendlyName
+            ReferenceInfo = @(
+                "Org DN Value: $($CurrentADLevel.Org.DN) Version: $($CurrentADLevel.Org.Value)",
+                "Schema DN Value: $($CurrentADLevel.Schema.DN) Version: $($CurrentADLevel.Schema.Value)",
+                "MESO DN Value: $($CurrentADLevel.MESO.DN) Version: $($CurrentADLevel.MESO.Value)",
+                "More Info: https://aka.ms/SA-ExchangeLatest"
+            )
         }
 
-        New-TestResult @params
-        if ($result -eq "Failed") {
-            TestPrepareAD -ExchangeVersion $ExchangeVersion
+        # We don't care about schema versions less than 2013 for current AD.
+        # We are going to be relying on Exchange 2013 latest otherwise based off the current logic.
+
+        # Two MESO containers found in domain, that could prevent you from installing Exchange in it.
+        if ($CurrentADLevel.MESO.Count -gt 1) {
+
+            $problemMesos = @($CurrentADLevel.MESO | Where-Object { $_.Value -lt 12433 })
+
+            if ($problemMesos.Count -ge 1) {
+                $problemMesos | ForEach-Object {
+                    $params.Details = "Problem MESO Container: $($_.DN)"
+                    $params.ReferenceInfo = "Must update or delete container"
+                    New-TestResult @params -Result "Failed"
+                }
+                return
+            }
+        }
+
+        # Test out to make sure you are running the correct version of the script that knows about this version of AD.
+        # This must be against 2019 as that would be the latest version that you can have.
+        $latestExchangeVersionBuild = Get-ExchangeBuildVersionInformation -FileVersion "15.2.9999.9"
+
+        if ($CurrentADLevel.Schema.Value -gt $latestExchangeVersionBuild.ADLevel.SchemaValue -or
+            $CurrentADLevel.MESO.Value -gt $latestExchangeVersionBuild.ADLevel.MESOValue -or
+            $CurrentADLevel.Org.Value -gt $latestExchangeVersionBuild.ADLevel.OrgValue) {
+            $referenceInfo = $params.ReferenceInfo
+            $params.ReferenceInfo = @(
+                "Unknown AD Version. Script is out of date. Please update prior to determining next steps.",
+                ""
+            )
+            $params.ReferenceInfo += $referenceInfo
+            New-TestResult @params -Result "Warning"
+            return
+        }
+
+        if ($BuildLevelInformation.ADLevel.SchemaValue -gt $CurrentADLevel.Schema.Value) {
+            # Trying to install a newer version of Exchange thus requires /PrepareAD with Schema Admin rights.
+            Test-UserGroupMemberOf -PrepareAdRequired $true -PrepareSchemaRequired $true
+            New-TestResult @params -Result "Failed"
+            TestPrepareAD
         } else {
-            Test-UserGroupMemberOf -PrepareAdRequired $false
+            # Schema Admin rights should not be required since we aren't updating the schema.
+            if ($BuildLevelInformation.ADLevel.MESOValue -le $CurrentADLevel.MESO.Value -and
+                $BuildLevelInformation.ADLevel.OrgValue -le $CurrentADLevel.Org.Value) {
+                Write-Verbose "We have a newer or equal ORG and MESO in AD. No AD Update is required"
+                New-TestResult @params -Result "Passed"
+            } elseif ($BuildLevelInformation.ADLevel.OrgValue -gt $CurrentADLevel.Org.Value) {
+                # /PrepareAD is required
+                Write-Verbose "Determined that /PrepareAD is required."
+                Test-UserGroupMemberOf -PrepareAdRequired $true
+                New-TestResult @params -Result "Failed"
+                TestPrepareAD
+            } else {
+                # /PrepareDomain is required. AKA Updating the MESO container.
+                Write-Verbose "Determined that /PrepareDomain is required."
+                $localDomainPrep = $null -ne $ADSetupLevel -and $ADSetupLevel.MESO.DN -ne "Unknown"
+                Test-UserGroupMemberOf -PrepareAdRequired $true -PrepareDomainOnly $localDomainPrep
+                New-TestResult @params -Result "Failed"
+                TestPrepareAD
+            }
         }
     }
 
-    Function GetVersionObject {
+    function GetVersionObject {
         param(
             [object]$SearchResults,
             [string]$VersionValueName = "ObjectVersion"
         )
-        return [PSCustomObject]@{
-            DN    = $SearchResults.Properties["DistinguishedName"]
-            Value = ($SearchResults.Properties[$VersionValueName]).ToInt32([System.Globalization.NumberFormatInfo]::InvariantInfo)
+        if ($null -eq $SearchResults.Properties) {
+            return [PSCustomObject]@{
+                DN    = "Unknown"
+                Value = -1
+            }
+        }
+
+        foreach ($result in $SearchResults) {
+            [PSCustomObject]@{
+                DN    = $result.Properties["DistinguishedName"]
+                Value = ($result.Properties[$VersionValueName]).ToInt32([System.Globalization.NumberFormatInfo]::InvariantInfo)
+            }
         }
     }
 
-    Function GetExchangeADSetupLevel {
-        $rootDSE = [ADSI]("LDAP://RootDSE")
+    function GetExchangeADSetupLevel {
+        $rootDSE = [ADSI]("LDAP://$([System.DirectoryServices.ActiveDirectory.Domain]::GetComputerDomain().Name)/RootDSE")
         $directorySearcher = New-Object System.DirectoryServices.DirectorySearcher
         $directorySearcher.SearchScope = "Subtree"
         $directorySearcher.SearchRoot = [ADSI]("LDAP://" + $rootDSE.configurationNamingContext.ToString())
         $directorySearcher.Filter = "(objectCategory=msExchOrganizationContainer)"
         $orgFindAll = $directorySearcher.FindAll()
+        Write-Verbose "Found $($orgFindAll.Count) ORG object(s)"
 
+        # Should only be 1 schema
         $directorySearcher.SearchRoot = [ADSI]("LDAP://CN=Schema," + $rootDSE.configurationNamingContext.ToString())
         $directorySearcher.Filter = "(&(name=ms-Exch-Schema-Version-Pt)(objectCategory=attributeSchema))"
         $schemaFindAll = $directorySearcher.FindAll()
+        Write-Verbose "Found $($schemaFindAll.Count) Schema object(s)"
 
-        $directorySearcher.SearchScope = "OneLevel"
-        $directorySearcher.SearchRoot = [ADSI]("LDAP://" + $rootDSE.rootDomainNamingContext.ToString())
+        $directorySearcher.SearchRoot = [ADSI]("LDAP://" + $rootDSE.defaultNamingContext.ToString())
         $directorySearcher.Filter = "(objectCategory=msExchSystemObjectsContainer)"
         $mesoFindAll = $directorySearcher.FindAll()
+        Write-Verbose "Found $($mesoFindAll.Count) MESO object(s)"
 
         return [PSCustomObject]@{
             Org    = (GetVersionObject -SearchResults $orgFindAll)
@@ -137,104 +191,71 @@ Function Test-ExchangeADSetupLevel {
     }
     # Extract for Pester Testing - End
 
-    #https://docs.microsoft.com/en-us/Exchange/plan-and-deploy/prepare-ad-and-domains?view=exchserver-2019
-    #https://docs.microsoft.com/en-us/exchange/prepare-active-directory-and-domains-exchange-2013-help
-    $latestExchangeVersion = [PSCustomObject]@{
-        2013 = [PSCustomObject]@{
-            CU         = "CU23"
-            UpperRange = 15312
-        }
-        2016 = [PSCustomObject]@{
-            CU         = "CU22"
-            UpperRange = 15334
-        }
-        2019 = [PSCustomObject]@{
-            CU         = "CU11"
-            UpperRange = 17003
-        }
-    }
+    <#
+        Get the current AD Level (SchemaValue, MESOValue, OrgValue)
+        Determine if Exchange install was attempted on this server by the SetupLog and OwaVersion
+            - Use the Setup Log Version if newer than the registry OwaVersion otherwise use OwaVersion
+        When trying to install Exchange 2016 Server, but have 2019 Schema, we should be okay providing the other AD Levels are at or above that CUs requirements.
+    #>
 
     $adLevel = GetExchangeADSetupLevel
-    $testName = "Exchange AD Latest Level"
-    $currentSchemaValue = $adLevel.Schema.Value
+    $setupLog = "$env:SystemDrive\ExchangeSetupLogs\ExchangeSetup.log"
+    $setupBuildInformation = $null                 # Current build information based off the setup log
+    $currentInstallBuildInformation = $null       # current install build information we are testing against.
+    $owaVersion = (Get-ItemProperty -Path Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\ExchangeServer\v15\Setup -ErrorAction SilentlyContinue).OwaVersion
 
-    #Less than the known Exchange 2013 schema version
-    if ($adLevel.Schema.Value -lt 15137) {
-        New-TestResult -TestName $testName -Result "Failed" -Details "Unknown Exchange Schema Version"
-        return
-    }
+    if (Test-Path $setupLog) {
 
-    #Exchange 2013 CU23 Only
-    if ($adLevel.Schema.Value -eq 15312) {
-        if ($adLevel.MESO.Value -eq 13237 -and
-            $adLevel.Org.Value -eq 16133) {
-            New-TestResult -TestName $testName -Result "Passed" -Details "Exchange 2013 CU23 Ready"
-        } else {
-            New-TestResult -TestName $testName -Result "Failed" -Details "Exchange 2013 CU23 Not Ready"
-        }
-    } elseif ($adLevel.Schema.Value -eq 15332) {
-        #Exchange 2016 CU10+
-        if ($adLevel.MESO.Value -eq 13236) {
-            if ($adLevel.Org.Value -eq 16213) {
-                TestReadyLevel "2016" "CU10"
-            } elseif ($adLevel.Org.Value -eq 16214) {
-                TestReadyLevel "2016" "CU11"
-            } elseif ($adLevel.Org.Value -eq 16215) {
-                TestReadyLevel "2016" "CU12"
-            } else {
-                TestMismatchLevel -ExchangeVersion "2016" -ADSetupLevel $adLevel
-            }
-        } elseif ($adLevel.MESO.Value -eq 13237 -and
-            $adLevel.Org.Value -eq 16217) {
-            TestReadyLevel "2016" "CU17"
-        } elseif ($adLevel.MESO.Value -eq 13238 -and
-            $adLevel.Org.Value -eq 16218) {
-            TestReadyLevel "2016" "CU18"
-        } else {
-            TestMismatchLevel -ExchangeVersion "2016" -ADSetupLevel $adLevel
-        }
-    } elseif ($adLevel.Schema.Value -eq 15333) {
-        if ($adLevel.MESO.Value -eq 13239 -and
-            $adLevel.Org.Value -eq 16219) {
-            TestReadyLevel "2016" "CU19"
-        } elseif ($adLevel.MESO.Value -eq 13240 -and
-            $adLevel.Org.Value -eq 16220) {
-            TestReadyLevel "2016" "CU20"
-        } else {
-            TestMismatchLevel -ExchangeVersion "2016" -ADSetupLevel $adLevel
-        }
-    } elseif ($adLevel.Schema.Value -eq 15334) {
-        if ($adLevel.MESO.Value -eq 13241 -and
-            $adLevel.Org.Value -eq 16221) {
-            TestReadyLevel "2016" "CU21"
-        } elseif ( $adLevel.MESO.Value -eq 13242 -and
-            $adLevel.Org.Value -eq 16222) {
-            TestReadyLevel "2016" "CU22"
-        } else {
-            TestMismatchLevel -ExchangeVersion "2016" -ADSetupLevel $adLevel
-        }
-    } elseif ($adLevel.schema.Value -eq 17002) {
-        #Exchange 2019 CU2+
-        if ($adLevel.MESO.Value -eq 13239 -and
-            $adLevel.Org.Value -eq 16756) {
-            TestReadyLevel "2019" "CU8"
-        } elseif ($adLevel.MESO.Value -eq 13240 -and
-            $adLevel.Org.Value -eq 16757) {
-            TestReadyLevel "2019" "CU9"
-        } else {
-            TestMismatchLevel -ExchangeVersion "2019" -ADSetupLevel $adLevel
-        }
-    } elseif ($adLevel.Schema.Value -eq 17003) {
-        if ($adLevel.MESO.Value -eq 13241 -and
-            $adLevel.Org.Value -eq 16758) {
-            TestReadyLevel "2019" "CU10"
-        } elseif ($adLevel.MESO.Value -eq 13242 -and
-            $adLevel.Org.Value -eq 16759) {
-            TestReadyLevel "2019" "CU11"
-        } else {
-            TestMismatchLevel -ExchangeVersion "2019" -ADSetupLevel $adLevel
+        try {
+            $logReviewer = Get-SetupLogReviewer -SetupLog $setupLog
+            $setupBuildNumber = $logReviewer.SetupBuildNumber
+            Write-Verbose "User: $($logReviewer.User) SetupBuildNumber: $setupBuildNumber"
+            $setupBuildInformation = Get-ExchangeBuildVersionInformation -FileVersion $setupBuildNumber
+        } catch {
+            Write-Warning "Failed to determine proper information from the setup log."
         }
     } else {
-        TestMismatchLevel -ExchangeVersion "2019" -ADSetupLevel $adLevel
+        Write-Verbose "No Setup Log to test against."
     }
+
+    if ($null -ne $owaVersion -or
+        $null -ne $setupBuildInformation) {
+        Write-Verbose "Setting the `$currentInstallBuildInformation to test against based off the build number on the computer."
+
+        if ($null -ne $owaVersion -and
+            $null -ne $setupBuildInformation) {
+            $owaBuildInfo = Get-ExchangeBuildVersionInformation -FileVersion $owaVersion
+
+            if ($owaBuildInfo.BuildVersion -lt $setupBuildInformation.BuildVersion) {
+                Write-Verbose "Trying to install newer CU, setting to Setup Build Number."
+                $currentInstallBuildInformation = $setupBuildInformation
+            } else {
+                Write-Verbose "Setting to OWA Build Number."
+                $currentInstallBuildInformation = $owaBuildInfo
+            }
+        } elseif ($null -ne $owaVersion) {
+            Write-Verbose "Setup Build Number was null, setting to OwaVersion"
+            $currentInstallBuildInformation = Get-ExchangeBuildVersionInformation -FileVersion $owaVersion
+        } else {
+            Write-Verbose "OwaVersion was null, setting to Setup Build Number."
+            $currentInstallBuildInformation = $setupBuildInformation
+        }
+    } else {
+        Write-Verbose "Setting the `$currentInstallBuildInformation to test against based off the latest version of the schema range."
+
+        # Exchange 2016 RTM Schema Value is 15317
+        # Exchange 2019 RTM Schema Value is 17000
+        if ($adLevel.Schema.Value -lt 15317) {
+            Write-Verbose "Setting to latest 2013"
+            $currentInstallBuildInformation = Get-ExchangeBuildVersionInformation -FileVersion "15.0.9999.9"
+        } elseif ($adLevel.Schema.Value -lt 17000) {
+            Write-Verbose "Setting to latest 2016"
+            $currentInstallBuildInformation = Get-ExchangeBuildVersionInformation -FileVersion "15.1.9999.9"
+        } else {
+            Write-Verbose "Setting to latest 2019"
+            $currentInstallBuildInformation = Get-ExchangeBuildVersionInformation -FileVersion "15.2.9999.9"
+        }
+    }
+
+    TestADLevelToBuildInformation -CurrentADLevel $adLevel -BuildLevelInformation $currentInstallBuildInformation
 }

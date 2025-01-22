@@ -26,7 +26,7 @@ function Out-Columns {
         $Properties,
 
         [Parameter(Mandatory = $false, Position = 1)]
-        [scriptblock[]]
+        [ScriptBlock[]]
         $ColorizerFunctions = @(),
 
         [Parameter(Mandatory = $false)]
@@ -69,11 +69,11 @@ function Out-Columns {
                             [void]$sb.Clear()
                             $i--
                         } else {
-                            if ($split[$i].Length -lt $width) {
+                            if ($split[$i].Length -le $width) {
                                 [void]$lines.Add($split[$i])
                             } else {
                                 [void]$lines.Add($split[$i].Substring(0, $width))
-                                $split[$i] = $split[$i].Substring($width + 1)
+                                $split[$i] = $split[$i].Substring($width)
                                 $i--
                             }
                         }
@@ -120,7 +120,7 @@ function Out-Columns {
                         if ($null -ne $multiLineProps[$p] -and $multiLineProps[$p].Length -gt $i) {
                             $lineProps[$p] = $multiLineProps[$p][$i]
                         } elseif ($i -eq 0) {
-                            $lineProps[$p] = $o."$p"
+                            $lineProps[$p] = $obj."$p"
                         } else {
                             $lineProps[$p] = $null
                         }
@@ -132,18 +132,18 @@ function Out-Columns {
         }
 
         function GetColumnColors {
-            param($obj, $props, $funcs)
+            param($obj, $props, $functions)
 
             $consoleHost = (Get-Host).Name -eq "ConsoleHost"
             $colColors = New-Object string[] $props.Count
             for ($i = 0; $i -lt $props.Count; $i++) {
                 if ($consoleHost) {
-                    $fgColor = (Get-Host).ui.rawui.ForegroundColor
+                    $fgColor = (Get-Host).ui.RawUi.ForegroundColor
                 } else {
                     $fgColor = "White"
                 }
-                foreach ($func in $funcs) {
-                    $result = $func.Invoke($o, $props[$i])
+                foreach ($func in $functions) {
+                    $result = $func.Invoke($obj, $props[$i])
                     if (-not [string]::IsNullOrEmpty($result)) {
                         $fgColor = $result
                         break # The first colorizer that takes action wins
@@ -265,15 +265,16 @@ function Out-Columns {
             [void]$stb.Append([System.Environment]::NewLine)
 
             foreach ($o in $objects) {
-                $colColors = GetColumnColors -obj $o -props $props -funcs $ColorizerFunctions
+                $colColors = GetColumnColors -obj $o -props $props -functions $ColorizerFunctions
                 $lineObjects = @(GetLineObjects -obj $o -props $props -colWidths $colWidths)
                 foreach ($lineObj in $lineObjects) {
                     Write-Host (" " * $IndentSpaces) -NoNewline
                     [void]$stb.Append(" " * $IndentSpaces)
                     for ($i = 0; $i -lt $props.Count; $i++) {
-                        $val = $o."$($props[$i])"
-                        Write-Host ("{0,$(-1 * ($colWidths[$i] + $padding))}" -f $lineObj."$($props[$i])") -NoNewline -ForegroundColor $colColors[$i]
-                        [void]$stb.Append("{0,$(-1 * ($colWidths[$i] + $padding))}" -f $lineObj."$($props[$i])")
+                        $val = $lineObj."$($props[$i])"
+                        if ($val.Count -eq 0) { $val = "" }
+                        Write-Host ("{0,$(-1 * ($colWidths[$i] + $padding))}" -f $val) -NoNewline -ForegroundColor $colColors[$i]
+                        [void]$stb.Append("{0,$(-1 * ($colWidths[$i] + $padding))}" -f $val)
                     }
 
                     Write-Host

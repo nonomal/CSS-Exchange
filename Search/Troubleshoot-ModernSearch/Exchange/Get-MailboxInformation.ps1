@@ -1,8 +1,10 @@
 ﻿# Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-#Dependencies are based off EMS cmdlets.
-Function Get-MailboxInformation {
+. $PSScriptRoot\..\..\..\Shared\StoreQueryFunctions.ps1
+. $PSScriptRoot\..\..\..\Shared\Write-ErrorInformation.ps1
+# Gets the information required to determine an issue for the particular mailbox.
+function Get-MailboxInformation {
     [CmdletBinding()]
     param(
         [string]
@@ -15,63 +17,44 @@ Function Get-MailboxInformation {
         $IsPublicFolder
     )
 
-    begin {
-        $diagnosticContext = New-Object 'System.Collections.Generic.List[string]'
-        $breadCrumb = 0
-    }
+    try {
 
-    process {
+        <#
+            From Get-StoreQueryMailboxInformation we already collect the following:
+                - Get-Mailbox
+                - Get-MailboxStatistics
+                - Get-MailboxDatabaseCopyStatus
+                - Get-ExchangeServer
+                - Get-MailboxDatabase -Status
+        #>
+        Write-Host "Getting basic mailbox information for $Identity"
+        $storeQueryMailboxInfo = Get-StoreQueryMailboxInformation -Identity $Identity -IsArchive $IsArchive -IsPublicFolder $IsPublicFolder
 
-        try {
-            $diagnosticContext.Add("Get-MailboxInformation $($breadCrumb; $breadCrumb++)")
-            $mailboxInfo = Get-Mailbox -Identity $Identity -PublicFolder:$IsPublicFolder -Archive:$IsArchive -ErrorAction Stop
+        if ($storeQueryMailboxInfo.ExchangeServer.AdminDisplayVersion.ToString() -notlike "Version 15.2*") {
+            throw "Mailbox isn't on an Exchange 2019 server"
+        }
 
-            if ($IsArchive) {
-                $mbxGuid = $mailboxInfo.ArchiveGuid.ToString()
-                $databaseName = $mailboxInfo.ArchiveDatabase.ToString()
-            } else {
-                $mbxGuid = $mailboxInfo.ExchangeGuid.ToString()
-                $databaseName = $mailboxInfo.Database.ToString()
-            }
-
-            $diagnosticContext.Add("Get-MailboxInformation $($breadCrumb; $breadCrumb++)")
-            $mailboxStats = Get-MailboxStatistics -Identity $Identity -Archive:$IsArchive
-
-            $diagnosticContext.Add("Get-MailboxInformation $($breadCrumb; $breadCrumb++)")
-            $dbCopyStatus = Get-MailboxDatabaseCopyStatus $databaseName\* |
-                Where-Object {
-                    $_.Status -like "*Mounted*"
+        if (-not $IsPublicFolder) {
+            try {
+                # Only thing additionally that needs to be collected is Get-MailboxFolderStatistics
+                $params = @{
+                    Identity                    = $Identity
+                    Archive                     = $IsArchive
+                    ErrorAction                 = "Stop"
+                    FolderScope                 = "NonIPMRoot"
+                    IncludeOldestAndNewestItems = $true
+                    IncludeAnalysis             = $true
                 }
-            $primaryServer = $dbCopyStatus.Name.Substring($dbCopyStatus.Name.IndexOf("\") + 1)
-
-            $diagnosticContext.Add("Get-MailboxInformation $($breadCrumb; $breadCrumb++)")
-            $primaryServerInfo = Get-ExchangeServer -Identity $primaryServer
-
-            if ($primaryServerInfo.AdminDisplayVersion.ToString() -notlike "Version 15.2*") {
-                throw "User isn't on an Exchange 2019 server"
+                $mailboxFolderStats = Get-MailboxFolderStatistics @params
+                $storeQueryMailboxInfo | Add-Member -MemberType NoteProperty -Name "MailboxFolderStatistics" -Value $mailboxFolderStats
+            } catch {
+                Write-Verbose "Failed to collect Get-MailboxFolderStatistics"
             }
-
-            $diagnosticContext.Add("Get-MailboxInformation $($breadCrumb; $breadCrumb++)")
-            $dbStatus = Get-MailboxDatabase -Identity $databaseName -Status
-
-            $diagnosticContext.Add("Get-MailboxInformation $($breadCrumb; $breadCrumb++)")
-        } catch {
-            throw "Failed to find '$Identity' information. InnerException: $($Error[0].Exception)"
         }
-    }
-    end {
-        return [PSCustomObject]@{
-            Identity           = $Identity
-            MailboxGuid        = $mbxGuid
-            PrimaryServer      = $primaryServer
-            DBWorkerID         = $dbStatus.WorkerProcessId
-            Database           = $databaseName
-            ExchangeServer     = $primaryServerInfo
-            DatabaseStatus     = $dbStatus
-            DatabaseCopyStatus = $dbCopyStatus
-            MailboxInfo        = $mailboxInfo
-            MailboxStatistics  = $mailboxStats
-            DiagnosticContext  = $diagnosticContext
-        }
+
+        return $storeQueryMailboxInfo
+    } catch {
+        Write-VerboseErrorInformation
+        throw "Failed to find '$Identity' information. InnerException: $($Error[0].Exception)"
     }
 }

@@ -3,7 +3,7 @@
 
 . $PSScriptRoot\Get-RemoteRegistrySubKey.ps1
 
-Function Get-RemoteRegistryValue {
+function Get-RemoteRegistryValue {
     [CmdletBinding()]
     param(
         [string]$RegistryHive = "LocalMachine",
@@ -11,7 +11,7 @@ Function Get-RemoteRegistryValue {
         [string]$SubKey,
         [string]$GetValue,
         [string]$ValueType,
-        [scriptblock]$CatchActionFunction
+        [ScriptBlock]$CatchActionFunction
     )
 
     <#
@@ -67,7 +67,11 @@ Function Get-RemoteRegistryValue {
         }
     }
     end {
-        Write-Verbose "Get-RemoteRegistryValue Return Value: '$registryGetValue'"
+        if ($registryGetValue.Length -le 100) {
+            Write-Verbose "$($MyInvocation.MyCommand) Return Value: '$registryGetValue'"
+        } else {
+            Write-Verbose "$($MyInvocation.MyCommand) Return Value is too long to log"
+        }
         return $registryGetValue
     }
 }

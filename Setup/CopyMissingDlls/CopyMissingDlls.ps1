@@ -19,7 +19,19 @@ $2019mappingsFileContent = [System.Text.Encoding]::UTF8.GetString($2019mappingsF
 
 #Get Version installed on server
 $installPath = (Get-ItemProperty -Path Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\ExchangeServer\v15\Setup -ErrorAction SilentlyContinue).MsiInstallPath
+
+if ($null -eq $installPath) {
+    throw "Failed to find MsiInstallPath in the registry."
+} elseif (-not (Test-Path $installPath)) {
+    throw "Failed to find proper install path. '$installPath'"
+}
+
 $installedVersion = (Get-ItemProperty -Path Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\ExchangeServer\v15\AdminTools -ErrorAction SilentlyContinue).ConfiguredVersion
+
+if ($null -eq $installedVersion) {
+    throw "Failed to find ConfiguredVersion in the registry."
+}
+
 #get version of ISO, verify it is the same.
 $isoItemRoot = Get-Item "$IsoRoot\Setup.exe"
 
@@ -41,7 +53,7 @@ if ($isoItemRoot.VersionInfo.ProductMinorPart -eq 0) {
     throw "Can't tell what version you are on"
 }
 
-Function Receive-Output {
+function Receive-Output {
     process {
         Write-Host $_
         $_ | Out-File -FilePath $scriptLogging -Append

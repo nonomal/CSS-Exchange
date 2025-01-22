@@ -2,11 +2,12 @@
 # Licensed under the MIT License.
 
 . $PSScriptRoot\..\..\..\..\Shared\Invoke-ScriptBlockHandler.ps1
-Function Get-Smb1ServerSettings {
+function Get-Smb1ServerSettings {
     [CmdletBinding()]
     param(
         [string]$ServerName = $env:COMPUTERNAME,
-        [scriptblock]$CatchActionFunction
+        [object[]]$GetWindowsFeature,
+        [ScriptBlock]$CatchActionFunction
     )
     begin {
         Write-Verbose "Calling: $($MyInvocation.MyCommand)"
@@ -14,16 +15,25 @@ Function Get-Smb1ServerSettings {
         $windowsFeature = $null
     }
     process {
-        $smbServerConfiguration = Invoke-ScriptBlockHandler -ComputerName $ServerName `
-            -ScriptBlock { Get-SmbServerConfiguration } `
-            -CatchActionFunction $CatchActionFunction `
-            -ScriptBlockDescription "Get-SmbServerConfiguration"
+        $params = @{
+            ComputerName           = $ServerName
+            ScriptBlock            = { Get-SmbServerConfiguration -ErrorAction Stop }
+            CatchActionFunction    = $CatchActionFunction
+            ScriptBlockDescription = "Get-SmbServerConfiguration"
+        }
+        $smbServerConfiguration = Invoke-ScriptBlockHandler @params
 
-        try {
-            $windowsFeature = Get-WindowsFeature "FS-SMB1" -ComputerName $ServerName -ErrorAction Stop
-        } catch {
-            Write-Verbose "Failed to Get-WindowsFeature for FS-SMB1"
-            Invoke-CatchActionError $CatchActionFunction
+        if ($null -ne $GetWindowsFeature -and
+            $GetWindowsFeature.Count -gt 0) {
+            $windowsFeature = $GetWindowsFeature | Where-Object { $_.Name -eq "FS-SMB1" }
+        } else {
+            try {
+                Write-Verbose "Get-WindowsFeature results wasn't provided, need to manually find FS-SMB1"
+                $windowsFeature = Get-WindowsFeature "FS-SMB1" -ComputerName $ServerName -ErrorAction Stop
+            } catch {
+                Write-Verbose "Failed to Get-WindowsFeature for FS-SMB1"
+                Invoke-CatchActionError $CatchActionFunction
+            }
         }
     }
     end {

@@ -3,7 +3,7 @@
 
 . $PSScriptRoot\Add-AnalyzedResultInformation.ps1
 . $PSScriptRoot\Get-DisplayResultsGroupingKey.ps1
-Function Invoke-AnalyzerNicSettings {
+function Invoke-AnalyzerNicSettings {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -17,59 +17,85 @@ Function Invoke-AnalyzerNicSettings {
     )
 
     Write-Verbose "Calling: $($MyInvocation.MyCommand)"
-    $keyNICSettings = Get-DisplayResultsGroupingKey -Name "NIC Settings Per Active Adapter"  -DisplayOrder $Order -DefaultTabNumber 2
+    $baseParams = @{
+        AnalyzedInformation = $AnalyzeResults
+        DisplayGroupingKey  = (Get-DisplayResultsGroupingKey -Name "NIC Settings Per Active Adapter"  -DisplayOrder $Order -DefaultTabNumber 2)
+    }
     $osInformation = $HealthServerObject.OSInformation
     $hardwareInformation = $HealthServerObject.HardwareInformation
 
     foreach ($adapter in $osInformation.NetworkInformation.NetworkAdapters) {
 
         if ($adapter.Description -eq "Remote NDIS Compatible Device") {
-            Write-Verbose "Remote NDSI Compatible Device found. Ignoring NIC."
+            Write-Verbose "Remote NDIS Compatible Device found. Ignoring NIC."
             continue
         }
 
-        $value = "{0} [{1}]" -f $adapter.Description, $adapter.Name
-        $AnalyzeResults | Add-AnalyzedResultInformation -Name "Interface Description" -Details $value `
-            -DisplayGroupingKey $keyNICSettings `
-            -DisplayCustomTabNumber 1
+        $params = $baseParams + @{
+            Name                   = "Interface Description"
+            Details                = "$($adapter.Description) [$($adapter.Name)]"
+            DisplayCustomTabNumber = 1
+        }
+        Add-AnalyzedResultInformation @params
 
-        if ($osInformation.BuildInformation.MajorVersion -ge [HealthChecker.OSServerVersion]::Windows2012R2) {
+        if ($osInformation.BuildInformation.MajorVersion -notlike "Windows2008*" -and
+            $osInformation.BuildInformation.MajorVersion -ne "Windows2012") {
             Write-Verbose "On Windows 2012 R2 or new. Can provide more details on the NICs"
 
             $driverDate = $adapter.DriverDate
             $detailsValue = $driverDate
 
-            if ($hardwareInformation.ServerType -eq [HealthChecker.ServerType]::Physical -or
-                $hardwareInformation.ServerType -eq [HealthChecker.ServerType]::AmazonEC2) {
+            if ($hardwareInformation.ServerType -eq "Physical" -or
+                $hardwareInformation.ServerType -eq "AmazonEC2") {
 
                 if ($null -eq $driverDate -or
                     $driverDate -eq [DateTime]::MaxValue) {
                     $detailsValue = "Unknown"
                 } elseif ((New-TimeSpan -Start $date -End $driverDate).Days -lt [int]-365) {
-                    $AnalyzeResults | Add-AnalyzedResultInformation -Details "Warning: NIC driver is over 1 year old. Verify you are at the latest version." `
-                        -DisplayGroupingKey $keyNICSettings `
-                        -DisplayWriteType "Yellow" `
-                        -AddHtmlDetailRow $false
+                    $params = $baseParams + @{
+                        Details          = "Warning: NIC driver is over 1 year old. Verify you are at the latest version."
+                        DisplayWriteType = "Yellow"
+                        AddHtmlDetailRow = $false
+                    }
+                    Add-AnalyzedResultInformation @params
                 }
             }
 
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Driver Date" -Details $detailsValue `
-                -DisplayGroupingKey $keyNICSettings
+            $params = $baseParams + @{
+                Name    = "Driver Date"
+                Details = $detailsValue
+            }
+            Add-AnalyzedResultInformation @params
 
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Driver Version" -Details ($adapter.DriverVersion) `
-                -DisplayGroupingKey $keyNICSettings
+            $params = $baseParams + @{
+                Name    = "Driver Version"
+                Details = $adapter.DriverVersion
+            }
+            Add-AnalyzedResultInformation @params
 
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "MTU Size" -Details ($adapter.MTUSize) `
-                -DisplayGroupingKey $keyNICSettings
+            $params = $baseParams + @{
+                Name    = "MTU Size"
+                Details = $adapter.MTUSize
+            }
+            Add-AnalyzedResultInformation @params
 
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Max Processors" -Details ($adapter.NetAdapterRss.MaxProcessors) `
-                -DisplayGroupingKey $keyNICSettings
+            $params = $baseParams + @{
+                Name    = "Max Processors"
+                Details = $adapter.NetAdapterRss.MaxProcessors
+            }
+            Add-AnalyzedResultInformation @params
 
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Max Processor Number" -Details ($adapter.NetAdapterRss.MaxProcessorNumber) `
-                -DisplayGroupingKey $keyNICSettings
+            $params = $baseParams + @{
+                Name    = "Max Processor Number"
+                Details = $adapter.NetAdapterRss.MaxProcessorNumber
+            }
+            Add-AnalyzedResultInformation @params
 
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Number of Receive Queues" -Details ($adapter.NetAdapterRss.NumberOfReceiveQueues) `
-                -DisplayGroupingKey $keyNICSettings
+            $params = $baseParams + @{
+                Name    = "Number of Receive Queues"
+                Details = $adapter.NetAdapterRss.NumberOfReceiveQueues
+            }
+            Add-AnalyzedResultInformation @params
 
             $writeType = "Yellow"
             $testingValue = $null
@@ -85,10 +111,13 @@ Function Invoke-AnalyzerNicSettings {
                 $detailsValue = "No RSS Feature Detected."
             }
 
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "RSS Enabled" -Details $detailsValue `
-                -DisplayGroupingKey $keyNICSettings `
-                -DisplayWriteType $writeType `
-                -DisplayTestingValue $testingValue
+            $params = $baseParams + @{
+                Name                = "RSS Enabled"
+                Details             = $detailsValue
+                DisplayWriteType    = $writeType
+                DisplayTestingValue = $testingValue
+            }
+            Add-AnalyzedResultInformation @params
         } else {
             Write-Verbose "On Windows 2012 or older and can't get advanced NIC settings"
         }
@@ -96,48 +125,55 @@ Function Invoke-AnalyzerNicSettings {
         $linkSpeed = $adapter.LinkSpeed
         $displayValue = "{0} --- This may not be accurate due to virtualized hardware" -f $linkSpeed
 
-        if ($hardwareInformation.ServerType -eq [HealthChecker.ServerType]::Physical -or
-            $hardwareInformation.ServerType -eq [HealthChecker.ServerType]::AmazonEC2) {
+        if ($hardwareInformation.ServerType -eq "Physical" -or
+            $hardwareInformation.ServerType -eq "AmazonEC2") {
             $displayValue = $linkSpeed
         }
 
-        $AnalyzeResults | Add-AnalyzedResultInformation -Name "Link Speed" -Details $displayValue `
-            -DisplayGroupingKey $keyNICSettings `
-            -DisplayTestingValue $linkSpeed
+        $params = $baseParams + @{
+            Name                = "Link Speed"
+            Details             = $displayValue
+            DisplayTestingValue = $linkSpeed
+        }
+        Add-AnalyzedResultInformation @params
 
         $displayValue = "{0}" -f $adapter.IPv6Enabled
         $displayWriteType = "Grey"
         $testingValue = $adapter.IPv6Enabled
 
-        if ($osInformation.NetworkInformation.IPv6DisabledComponents -ne 255 -and
+        if ($osInformation.RegistryValues.IPv6DisabledComponents -ne 255 -and
             $adapter.IPv6Enabled -eq $false) {
             $displayValue = "{0} --- Warning" -f $adapter.IPv6Enabled
             $displayWriteType = "Yellow"
             $testingValue = $false
         }
 
-        $AnalyzeResults | Add-AnalyzedResultInformation -Name "IPv6 Enabled" -Details $displayValue `
-            -DisplayGroupingKey $keyNICSettings `
-            -DisplayWriteType $displayWriteType `
-            -DisplayTestingValue $TestingValue
+        $params = $baseParams + @{
+            Name                = "IPv6 Enabled"
+            Details             = $displayValue
+            DisplayWriteType    = $displayWriteType
+            DisplayTestingValue = $testingValue
+        }
+        Add-AnalyzedResultInformation @params
 
-        $AnalyzeResults | Add-AnalyzedResultInformation -Name "IPv4 Address" `
-            -DisplayGroupingKey $keyNICSettings
+        Add-AnalyzedResultInformation -Name "IPv4 Address" @baseParams
 
         foreach ($address in $adapter.IPv4Addresses) {
-            $displayValue = "{0}\{1}" -f $address.Address, $address.Subnet
+            $displayValue = "{0}/{1}" -f $address.Address, $address.Subnet
 
             if ($address.DefaultGateway -ne [string]::Empty) {
                 $displayValue += " Gateway: {0}" -f $address.DefaultGateway
             }
 
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Address" -Details $displayValue `
-                -DisplayGroupingKey $keyNICSettings `
-                -DisplayCustomTabNumber 3
+            $params = $baseParams + @{
+                Name                   = "Address"
+                Details                = $displayValue
+                DisplayCustomTabNumber = 3
+            }
+            Add-AnalyzedResultInformation @params
         }
 
-        $AnalyzeResults | Add-AnalyzedResultInformation -Name "IPv6 Address" `
-            -DisplayGroupingKey $keyNICSettings
+        Add-AnalyzedResultInformation -Name "IPv6 Address" @baseParams
 
         foreach ($address in $adapter.IPv6Addresses) {
             $displayValue = "{0}\{1}" -f $address.Address, $address.Subnet
@@ -146,19 +182,28 @@ Function Invoke-AnalyzerNicSettings {
                 $displayValue += " Gateway: {0}" -f $address.DefaultGateway
             }
 
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Address" -Details $displayValue `
-                -DisplayGroupingKey $keyNICSettings `
-                -DisplayCustomTabNumber 3
+            $params = $baseParams + @{
+                Name                   = "Address"
+                Details                = $displayValue
+                DisplayCustomTabNumber = 3
+            }
+            Add-AnalyzedResultInformation @params
         }
 
-        $AnalyzeResults | Add-AnalyzedResultInformation -Name "DNS Server" -Details $adapter.DnsServer `
-            -DisplayGroupingKey $keyNICSettings
+        $params = $baseParams + @{
+            Name    = "DNS Server"
+            Details = $adapter.DnsServer
+        }
+        Add-AnalyzedResultInformation @params
 
-        $AnalyzeResults | Add-AnalyzedResultInformation -Name "Registered In DNS" -Details $adapter.RegisteredInDns `
-            -DisplayGroupingKey $keyNICSettings
+        $params = $baseParams + @{
+            Name    = "Registered In DNS"
+            Details = $adapter.RegisteredInDns
+        }
+        Add-AnalyzedResultInformation @params
 
         #Assuming that all versions of Hyper-V doesn't allow sleepy NICs
-        if (($hardwareInformation.ServerType -ne [HealthChecker.ServerType]::HyperV) -and ($adapter.PnPCapabilities -ne "MultiplexorNoPnP")) {
+        if (($hardwareInformation.ServerType -ne "HyperV") -and ($adapter.PnPCapabilities -ne "MultiplexorNoPnP")) {
             $displayWriteType = "Grey"
             $displayValue = $adapter.SleepyNicDisabled
 
@@ -167,10 +212,13 @@ Function Invoke-AnalyzerNicSettings {
                 $displayValue = "False --- Warning: It's recommended to disable NIC power saving options`r`n`t`t`tMore Information: https://aka.ms/HC-NICPowerManagement"
             }
 
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Sleepy NIC Disabled" -Details $displayValue `
-                -DisplayGroupingKey $keyNICSettings `
-                -DisplayWriteType $displayWriteType `
-                -DisplayTestingValue $adapter.SleepyNicDisabled
+            $params = $baseParams + @{
+                Name                = "Sleepy NIC Disabled"
+                Details             = $displayValue
+                DisplayWriteType    = $displayWriteType
+                DisplayTestingValue = $adapter.SleepyNicDisabled
+            }
+            Add-AnalyzedResultInformation @params
         }
 
         $adapterDescription = $adapter.Description
@@ -223,24 +271,31 @@ Function Invoke-AnalyzerNicSettings {
             $displayWriteType = "Grey"
         }
 
-        $AnalyzeResults | Add-AnalyzedResultInformation -Name "Packets Received Discarded" -Details $displayValue `
-            -DisplayGroupingKey $keyNICSettings `
-            -DisplayTestingValue $cookedValue `
-            -DisplayWriteType $displayWriteType
+        $params = $baseParams + @{
+            Name                = "Packets Received Discarded"
+            Details             = $displayValue
+            DisplayWriteType    = $displayWriteType
+            DisplayTestingValue = $cookedValue
+        }
+        Add-AnalyzedResultInformation @params
 
         if ($knownIssue) {
-            $AnalyzeResults | Add-AnalyzedResultInformation -Details "Known Issue with vmxnet3: 'Large packet loss at the guest operating system level on the VMXNET3 vNIC in ESXi (2039495)' - https://aka.ms/HC-VMwareLostPackets" `
-                -DisplayGroupingKey $keyNICSettings `
-                -DisplayWriteType "Yellow" `
-                -DisplayCustomTabNumber 3 `
-                -AddHtmlDetailRow $false
+            $params = $baseParams + @{
+                Details                = "Known Issue with vmxnet3: 'Large packet loss at the guest operating system level on the VMXNET3 vNIC in ESXi (2039495)' - https://aka.ms/HC-VMwareLostPackets"
+                DisplayWriteType       = "Yellow"
+                DisplayCustomTabNumber = 3
+                AddHtmlDetailRow       = $false
+            }
+            Add-AnalyzedResultInformation @params
         }
     }
 
     if ($osInformation.NetworkInformation.NetworkAdapters.Count -gt 1) {
-        $AnalyzeResults | Add-AnalyzedResultInformation -Details "Multiple active network adapters detected. Exchange 2013 or greater may not need separate adapters for MAPI and replication traffic.  For details please refer to https://aka.ms/HC-PlanHA#network-requirements" `
-            -DisplayGroupingKey $keyNICSettings `
-            -AddHtmlDetailRow $false
+        $params = $baseParams + @{
+            Details          = "Multiple active network adapters detected. Exchange 2013 or greater may not need separate adapters for MAPI and replication traffic.  For details please refer to https://aka.ms/HC-PlanHA#network-requirements"
+            AddHtmlDetailRow = $false
+        }
+        Add-AnalyzedResultInformation @params
     }
 
     if ($osInformation.NetworkInformation.IPv6DisabledOnNICs) {
@@ -248,19 +303,34 @@ Function Invoke-AnalyzerNicSettings {
         $displayValue = "True"
         $testingValue = $true
 
-        if ($osInformation.NetworkInformation.IPv6DisabledComponents -eq -1) {
+        if ($osInformation.RegistryValues.IPv6DisabledComponents -eq -1) {
             $displayWriteType = "Red"
             $testingValue = $false
             $displayValue = "False `r`n`t`tError: IPv6 is disabled on some NIC level settings but not correctly disabled via DisabledComponents registry value. It is currently set to '-1'. `r`n`t`tThis setting cause a system startup delay of 5 seconds. For details please refer to: `r`n`t`thttps://aka.ms/HC-ConfigureIPv6"
-        } elseif ($osInformation.NetworkInformation.IPv6DisabledComponents -ne 255) {
+        } elseif ($osInformation.RegistryValues.IPv6DisabledComponents -ne 255) {
             $displayWriteType = "Red"
             $testingValue = $false
-            $displayValue = "False `r`n`t`tError: IPv6 is disabled on some NIC level settings but not fully disabled. DisabledComponents registry value currently set to '{0}'. For details please refer to the following articles: `r`n`t`thttps://aka.ms/HC-DisableIPv6`r`n`t`thttps://aka.ms/HC-ConfigureIPv6" -f $osInformation.NetworkInformation.IPv6DisabledComponents
+            $displayValue = "False `r`n`t`tError: IPv6 is disabled on some NIC level settings but not fully disabled. DisabledComponents registry value currently set to '{0}'. For details please refer to the following articles: `r`n`t`thttps://aka.ms/HC-DisableIPv6`r`n`t`thttps://aka.ms/HC-ConfigureIPv6" -f $osInformation.RegistryValues.IPv6DisabledComponents
         }
 
-        $AnalyzeResults | Add-AnalyzedResultInformation -Name "Disable IPv6 Correctly" -Details $displayValue `
-            -DisplayGroupingKey $keyNICSettings `
-            -DisplayWriteType $displayWriteType `
-            -DisplayCustomTabNumber 1
+        $params = $baseParams + @{
+            Name                   = "Disable IPv6 Correctly"
+            Details                = $displayValue
+            DisplayWriteType       = $displayWriteType
+            DisplayCustomTabNumber = 1
+        }
+        Add-AnalyzedResultInformation @params
+    }
+
+    $noDNSRegistered = ($osInformation.NetworkInformation.NetworkAdapters | Where-Object { $_.RegisteredInDns -eq $true }).Count -eq 0
+
+    if ($noDNSRegistered) {
+        $params = $baseParams + @{
+            Name                   = "No NIC Registered In DNS"
+            Details                = "Error: This will cause server to crash and odd mail flow issues. Exchange Depends on the primary NIC to have the setting Registered In DNS set."
+            DisplayWriteType       = "Red"
+            DisplayCustomTabNumber = 1
+        }
+        Add-AnalyzedResultInformation @params
     }
 }

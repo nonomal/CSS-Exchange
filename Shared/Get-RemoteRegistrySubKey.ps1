@@ -1,13 +1,13 @@
 ﻿# Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-Function Get-RemoteRegistrySubKey {
+function Get-RemoteRegistrySubKey {
     [CmdletBinding()]
     param(
         [string]$RegistryHive = "LocalMachine",
         [string]$MachineName,
         [string]$SubKey,
-        [scriptblock]$CatchActionFunction
+        [ScriptBlock]$CatchActionFunction
     )
     begin {
         Write-Verbose "Calling: $($MyInvocation.MyCommand)"

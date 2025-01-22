@@ -6,9 +6,8 @@
 param()
 
 BeforeAll {
-    . $PSScriptRoot\..\..\.build\BuildFunctions\Get-ExpandedScriptContent.ps1
     $Script:parentPath = [IO.Path]::Combine((Split-Path -Parent $PSScriptRoot), "SetupAssist")
-    $Script:PesterExtract = "# Extract for Pester Testing - Start"
+    . $PSScriptRoot\..\..\Shared\PesterLoadFunctions.NotPublished.ps1
 }
 
 Describe "Testing SetupAssist" {
@@ -16,24 +15,8 @@ Describe "Testing SetupAssist" {
     BeforeAll {
 
         #Load the functions
-        $internalFunctions = New-Object 'System.Collections.Generic.List[string]'
-        $scriptContent = Get-ExpandedScriptContent -File "$Script:parentPath\Checks\Domain\Test-ExchangeADSetupLevel.ps1"
-        $startIndex = $scriptContent.Trim().IndexOf($Script:PesterExtract)
-        for ($i = $startIndex + 1; $i -lt $scriptContent.Count; $i++) {
-            if ($scriptContent[$i].Trim().Contains($Script:PesterExtract.Replace("Start", "End"))) {
-                $endIndex = $i
-                break
-            }
-            $internalFunctions.Add($scriptContent[$i])
-        }
-
-        $scriptContent.RemoveRange($startIndex, $endIndex - $startIndex)
-        $scriptContentString = [string]::Empty
-        $internalFunctionsString = [string]::Empty
-        $scriptContent | ForEach-Object { $scriptContentString += "$($_)`n" }
-        $internalFunctions | ForEach-Object { $internalFunctionsString += "$($_)`n" }
-        Invoke-Expression $scriptContentString
-        Invoke-Expression $internalFunctionsString
+        $scriptContent = Get-PesterScriptContent -FilePath "$Script:parentPath\Checks\Domain\Test-ExchangeADSetupLevel.ps1"
+        Invoke-Expression $scriptContent
     }
 
     Context "Test-ExchangeADSetupLevel Function Test" {
@@ -41,11 +24,12 @@ Describe "Testing SetupAssist" {
         BeforeEach {
 
             Mock GetExchangeADSetupLevel { return $Script:GetExchangeADSetupLevel }
-            Mock TestMismatchLevel {}
+            Mock Get-SetupLogReviewer { return $Script:GetSetupLogReviewer }
             Mock TestPrepareAD {}
-            Mock Test-UserGroupMemberOf {}
+            Mock Test-Path { return $true }
+            Mock Test-UserGroupMemberOf { return $null }
 
-            Function SetGetExchangeADSetupLevel {
+            function SetGetExchangeADSetupLevel {
                 param(
                     [int]$OrgValue,
                     [int]$SchemaValue,
@@ -67,154 +51,78 @@ Describe "Testing SetupAssist" {
                     }
                 }
             }
+
+            function SetGetSetupLogReviewer {
+                param(
+                    [string]$BuildNumber,
+                    [string]$User
+                )
+
+                $Script:GetSetupLogReviewer = [PSCustomObject]@{
+                    SetupBuildNumber = $BuildNumber
+                    User             = $User
+                }
+            }
         }
 
         It "Unknown Exchange 2013 Schema Value" {
-            SetGetExchangeADSetupLevel -OrgValue 15130 -SchemaValue 15130 -MESOValue 15130
+            SetGetExchangeADSetupLevel -OrgValue 15130 -SchemaValue 15130 -MESOValue 13243
+            SetGetSetupLogReviewer "15.00.1473.003" "contoso\user"
             $results = Test-ExchangeADSetupLevel
+            Assert-MockCalled -CommandName Test-UserGroupMemberOf -ParameterFilter { $PrepareAdRequired -eq $true -and $PrepareSchemaRequired -eq $true } -Exactly 1
             $results.Result | Should -Be "Failed"
-            $results.Details | Should -Be "Unknown Exchange Schema Version"
-        }
-
-        It "Exchange 2013 CU23 Not Ready" {
-            SetGetExchangeADSetupLevel -OrgValue 16133 -SchemaValue 15312 -MESOValue 13236
-            $results = Test-ExchangeADSetupLevel
-            $results.Result | Should -Be "Failed"
-            $results.Details | Should -Be "Exchange 2013 CU23 Not Ready"
+            $results.Details | Should -Be "Exchange 2013 CU22 Feb19SU"
         }
 
         It "Exchange 2013 CU23 Ready" {
             SetGetExchangeADSetupLevel -OrgValue 16133 -SchemaValue 15312 -MESOValue 13237
+            SetGetSetupLogReviewer "15.00.1497.002" "contoso\user"
             $results = Test-ExchangeADSetupLevel
+            Assert-MockCalled -CommandName Test-UserGroupMemberOf -Exactly 0
             $results.Result | Should -Be "Passed"
-            $results.Details | Should -Be "Exchange 2013 CU23 Ready"
+            $results.Details | Should -Be "Exchange 2013 CU23"
         }
 
-        It "Exchange 2016 Mismatch MESO 13236 Schema 15332" {
-            SetGetExchangeADSetupLevel -OrgValue 16133 -SchemaValue 15332 -MESOValue 13236
-            Test-ExchangeADSetupLevel
-            Assert-MockCalled -Exactly 1 -CommandName "TestMismatchLevel"
-        }
-
-        It "Exchange 2016 Mismatch MESO 13235 Schema 15332" {
-            SetGetExchangeADSetupLevel -OrgValue 16133 -SchemaValue 15332 -MESOValue 13235
-            Test-ExchangeADSetupLevel
-            Assert-MockCalled -Exactly 1 -CommandName "TestMismatchLevel"
-        }
-
-        It "Exchange 2016 CU10" {
+        It "Exchange 2016 CU10 - Last attempt CU10" {
             SetGetExchangeADSetupLevel -OrgValue 16213 -SchemaValue 15332 -MESOValue 13236
-            $results = Test-ExchangeADSetupLevel
-            $results.Result | Should -Be "Failed"
-            $results.Details | Should -Be "At Exchange 2016 CU10"
-        }
-
-        It "Exchange 2016 CU11" {
-            SetGetExchangeADSetupLevel -OrgValue 16214 -SchemaValue 15332 -MESOValue 13236
-            $results = Test-ExchangeADSetupLevel
-            $results.Result | Should -Be "Failed"
-            $results.Details | Should -Be "At Exchange 2016 CU11"
-        }
-
-        It "Exchange 2016 CU12" {
-            SetGetExchangeADSetupLevel -OrgValue 16215 -SchemaValue 15332 -MESOValue 13236
-            $results = Test-ExchangeADSetupLevel
-            $results.Result | Should -Be "Failed"
-            $results.Details | Should -Be "At Exchange 2016 CU12"
-        }
-
-        It "Exchange 2016 CU17" {
-            SetGetExchangeADSetupLevel -OrgValue 16217 -SchemaValue 15332 -MESOValue 13237
-            $results = Test-ExchangeADSetupLevel
-            $results.Result | Should -Be "Failed"
-            $results.Details | Should -Be "At Exchange 2016 CU17"
-        }
-
-        It "Exchange 2016 CU18" {
-            SetGetExchangeADSetupLevel -OrgValue 16218 -SchemaValue 15332 -MESOValue 13238
-            $results = Test-ExchangeADSetupLevel
-            $results.Result | Should -Be "Failed"
-            $results.Details | Should -Be "At Exchange 2016 CU18"
-        }
-
-        It "Exchange 2016 CU19" {
-            SetGetExchangeADSetupLevel -OrgValue 16219 -SchemaValue 15333 -MESOValue 13239
-            $results = Test-ExchangeADSetupLevel
-            $results.Result | Should -Be "Failed"
-            $results.Details | Should -Be "At Exchange 2016 CU19"
-        }
-
-        It "Exchange 2016 CU20" {
-            SetGetExchangeADSetupLevel -OrgValue 16220 -SchemaValue 15333 -MESOValue 13240
-            $results = Test-ExchangeADSetupLevel
-            $results.Result | Should -Be "Failed"
-            $results.Details | Should -Be "At Exchange 2016 CU20"
-        }
-
-        It "Exchange 2016 Mismatch Schema 15333" {
-            SetGetExchangeADSetupLevel -OrgValue 16221 -SchemaValue 15333 -MESOValue 13240
-            Test-ExchangeADSetupLevel
-            Assert-MockCalled -Exactly 1 -CommandName "TestMismatchLevel"
-        }
-
-        It "Exchange 2016 CU21" {
-            SetGetExchangeADSetupLevel -OrgValue 16221 -SchemaValue 15334 -MESOValue 13241
-            $results = Test-ExchangeADSetupLevel
-            $results.Result | Should -Be "Failed"
-            $results.Details | Should -Be "At Exchange 2016 CU21"
-        }
-
-        It "Exchange 2016 CU22" {
-            SetGetExchangeADSetupLevel -OrgValue 16222 -SchemaValue 15334 -MESOValue 13242
+            SetGetSetupLogReviewer "15.01.1531.003" "contoso\user"
             $results = Test-ExchangeADSetupLevel
             $results.Result | Should -Be "Passed"
-            $results.Details | Should -Be "At Exchange 2016 CU22"
+            $results.Details | Should -Be "Exchange 2016 CU10"
         }
 
-        It "Exchange 2016 Mismatch Schema 15334" {
-            SetGetExchangeADSetupLevel -OrgValue 16221 -SchemaValue 15334 -MESOValue 13240
-            Test-ExchangeADSetupLevel
-            Assert-MockCalled -Exactly 1 -CommandName "TestMismatchLevel"
+        It "Exchange 2016 CU10 AD - Last attempt CU11" {
+            SetGetExchangeADSetupLevel -OrgValue 16213 -SchemaValue 15332 -MESOValue 13236
+            SetGetSetupLogReviewer "15.01.1591.010" "contoso\user"
+            $results = Test-ExchangeADSetupLevel
+            Assert-MockCalled -CommandName Test-UserGroupMemberOf -ParameterFilter { $PrepareAdRequired -eq $true } -Exactly 1
+            $results.Result | Should -Be "Failed"
+            $results.Details | Should -Be "Exchange 2016 CU11"
+        }
+
+        It "Exchange 2016 CU23" {
+            SetGetExchangeADSetupLevel -OrgValue 16223 -SchemaValue 15334 -MESOValue 13243
+            SetGetSetupLogReviewer "15.1.2507.6" "contoso\user"
+            $results = Test-ExchangeADSetupLevel
+            Assert-MockCalled -CommandName Test-UserGroupMemberOf -Exactly 0
+            $results.Result | Should -Be "Passed"
+            $results.Details | Should -Be "Exchange 2016 CU23"
         }
 
         It "Exchange 2019 CU8" {
             SetGetExchangeADSetupLevel -OrgValue 16756 -SchemaValue 17002 -MESOValue 13239
-            $results = Test-ExchangeADSetupLevel
-            $results.Result | Should -Be "Failed"
-            $results.Details | Should -Be "At Exchange 2019 CU8"
-        }
-
-        It "Exchange 2019 CU9" {
-            SetGetExchangeADSetupLevel -OrgValue 16757 -SchemaValue 17002 -MESOValue 13240
-            $results = Test-ExchangeADSetupLevel
-            $results.Result | Should -Be "Failed"
-            $results.Details | Should -Be "At Exchange 2019 CU9"
-        }
-
-        It "Exchange 2019 Mismatch Schema 17002" {
-            SetGetExchangeADSetupLevel -OrgValue 16221 -SchemaValue 17002 -MESOValue 13240
-            Test-ExchangeADSetupLevel
-            Assert-MockCalled -Exactly 1 -CommandName "TestMismatchLevel"
-        }
-
-        It "Exchange 2019 CU10" {
-            SetGetExchangeADSetupLevel -OrgValue 16758 -SchemaValue 17003 -MESOValue 13241
-            $results = Test-ExchangeADSetupLevel
-            $results.Result | Should -Be "Failed"
-            $results.Details | Should -Be "At Exchange 2019 CU10"
-        }
-
-        It "Exchange 2019 CU11" {
-            SetGetExchangeADSetupLevel -OrgValue 16759 -SchemaValue 17003 -MESOValue 13242
+            SetGetSetupLogReviewer "15.2.464.5" "contoso\user"
             $results = Test-ExchangeADSetupLevel
             $results.Result | Should -Be "Passed"
-            $results.Details | Should -Be "At Exchange 2019 CU11"
+            $results.Details | Should -Be "Exchange 2019 CU3"
         }
 
-        It "Exchange 2019 Mismatch Schema 17003" {
-            SetGetExchangeADSetupLevel -OrgValue 16757 -SchemaValue 17003 -MESOValue 13241
-            Test-ExchangeADSetupLevel
-            Assert-MockCalled -Exactly 1 -CommandName "TestMismatchLevel"
+        It "Exchange 2019 CU12" {
+            SetGetExchangeADSetupLevel -OrgValue 16760 -SchemaValue 17003 -MESOValue 13243
+            SetGetSetupLogReviewer "15.2.1118.7" "contoso\user"
+            $results = Test-ExchangeADSetupLevel
+            $results.Result | Should -Be "Passed"
+            $results.Details | Should -Be "Exchange 2019 CU12"
         }
     }
 }

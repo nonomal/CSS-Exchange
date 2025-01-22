@@ -1,18 +1,22 @@
 ﻿# Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+. $PSScriptRoot\..\ErrorContext\Test-ArbitrationMailbox.ps1
 . $PSScriptRoot\..\ErrorContext\Test-DisabledService.ps1
 . $PSScriptRoot\..\ErrorContext\Test-EndpointMapper.ps1
 . $PSScriptRoot\..\ErrorContext\Test-FailedSearchFoundation.ps1
+. $PSScriptRoot\..\ErrorContext\Test-InstallFromBin.ps1
 . $PSScriptRoot\..\ErrorContext\Test-ExceptionADOperationFailedAlreadyExist.ps1
 . $PSScriptRoot\..\ErrorContext\Test-MissingDirectory.ps1
 . $PSScriptRoot\..\ErrorContext\Test-MissingHomeMdb.ps1
 . $PSScriptRoot\..\ErrorContext\Test-MountDatabaseFailure.ps1
 . $PSScriptRoot\..\ErrorContext\Test-MSExchangeSecurityGroupsContainerDeleted.ps1
+. $PSScriptRoot\..\ErrorContext\Test-ServiceControlReverse.ps1
 . $PSScriptRoot\..\ErrorContext\Test-VirtualDirectoryFailure.ps1
 . $PSScriptRoot\..\ErrorReference\Test-FipsUpgradeConfiguration.ps1
 . $PSScriptRoot\..\ErrorReference\Test-InitializePermissionsOfDomain.ps1
-Function Test-KnownIssuesByErrors {
+. $PSScriptRoot\..\ErrorReference\Test-MultiActiveSyncVirtualDirectories.ps1
+function Test-KnownIssuesByErrors {
     [CmdletBinding()]
     param(
         [Parameter(ValueFromPipeline = $true)]
@@ -21,7 +25,7 @@ Function Test-KnownIssuesByErrors {
     )
     begin {
         #Use this to call similar tests and break when we find a result that we like
-        Function InvokeTest {
+        function InvokeTest {
             [CmdletBinding()]
             param(
                 [object]$PipeObject,
@@ -55,6 +59,7 @@ Function Test-KnownIssuesByErrors {
         InvokeTest -PipeObject ([PSCustomObject]@{
                 ErrorContext = $contextOfError
             }) -Tests @(
+            "Test-ArbitrationMailbox",
             "Test-DisabledService",
             "Test-EndpointMapper",
             "Test-ExceptionADOperationFailedAlreadyExist",
@@ -63,7 +68,9 @@ Function Test-KnownIssuesByErrors {
             "Test-MissingHomeMdb",
             "Test-MountDatabaseFailure",
             "Test-MSExchangeSecurityGroupsContainerDeleted",
-            "Test-VirtualDirectoryFailure"
+            "Test-ServiceControlReverse",
+            "Test-VirtualDirectoryFailure",
+            "Test-InstallFromBin"
         )
 
         if ($Script:ReturnNow) {
@@ -75,7 +82,8 @@ Function Test-KnownIssuesByErrors {
                 SetupLogReviewer = $SetupLogReviewer
             }) -Tests @(
             "Test-InitializePermissionsOfDomain",
-            "Test-FipsUpgradeConfiguration"
+            "Test-FipsUpgradeConfiguration",
+            "Test-MultiActiveSyncVirtualDirectories"
         )
     }
 }
