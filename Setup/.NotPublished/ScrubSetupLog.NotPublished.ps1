@@ -9,8 +9,7 @@ param(
     [System.IO.FileInfo]$SetupLog
 )
 
-
-Function Get-EvaluatedSettingOrRule {
+function Get-EvaluatedSettingOrRule {
     param(
         [string]$SettingName,
         [string]$SettingOrRule = "Setting"
@@ -18,7 +17,7 @@ Function Get-EvaluatedSettingOrRule {
     return Select-String ("Evaluated \[{0}:{1}\].+\[Value:" -f $SettingOrRule, $SettingName) $SetupLog | Select-Object -Last 1
 }
 
-Function Add-SettingOrRuleToCollect {
+function Add-SettingOrRuleToCollect {
     param(
         [string]$Name,
         [string]$SettingOrRule = "Setting"
@@ -117,7 +116,7 @@ while ($i -lt $allContent.Count) {
     $logContent.Add($allContent[$i++])
 }
 
-Function ScrubValuesAndReplace {
+function ScrubValuesAndReplace {
     param(
         [string]$Match,
         [string]$Replace
@@ -133,7 +132,7 @@ Function ScrubValuesAndReplace {
     $Script:logContent = $newContent
 }
 
-$scrubToDomainPossibleName = "Rey.Ben.Skywalker.Child.Solo.local"
+$scrubToDomainPossibleName = "Rey.Ben.SkyWalker.Child.Solo.local"
 
 #Scrub the data
 $loggedOnUserSls = $logContent | Select-String "Logged on user: (.+)."
@@ -197,7 +196,7 @@ $orgContainerMatch = $orgContainerSls.Line.Substring($index, $orgContainerSls.Li
 $orgContainer = $orgContainerMatch.Replace($orgContainerSls.Matches.Groups[1].Value, "SoloORG")
 
 ScrubValuesAndReplace -Match $orgContainerMatch -Replace $orgContainer
-ScrubValuesAndReplace -Match $orgContainersls.Matches.Groups[1].Value -Replace "SoloORG"
+ScrubValuesAndReplace -Match $orgContainerSls.Matches.Groups[1].Value -Replace "SoloORG"
 
 $serverFQDNSls = $logContent | Select-String "Evaluated \[Setting:ComputerNameDnsFullyQualified\].+\[Value:`"(.+)`"\] \[ParentValue:"
 $i = 1

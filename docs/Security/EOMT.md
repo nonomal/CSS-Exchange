@@ -1,9 +1,4 @@
----
-title: EOMT.ps1
-parent: Security
----
-
-## Exchange On-premises Mitigation Tool (EOMT)
+# Exchange On-premises Mitigation Tool (EOMT)
 
 Download the latest release: [EOMT.ps1](https://github.com/microsoft/CSS-Exchange/releases/latest/download/EOMT.ps1)
 
@@ -20,33 +15,33 @@ This is the most effective way to help quickly protect and mitigate your Exchang
 
 This a better approach for Exchange deployments with Internet access and for those who want an attempt at automated remediation. We have not observed any impact to Exchange Server functionality via these mitigation methods nor do these mitigation methods make any direct changes that disable features of Exchange.
 
-Use of the Exchange On-premises Mitigation Tool and the Microsoft Saftey Scanner are subject to the terms of the Microsoft Privacy Statement: https://aka.ms/privacy
+Use of the Exchange On-premises Mitigation Tool and the Microsoft Safety Scanner are subject to the terms of the Microsoft Privacy Statement: https://aka.ms/privacy
 
-### Requirements to run the Exchange On-premises Mitigation Tool
+## Requirements to run the Exchange On-premises Mitigation Tool
 
 * External Internet Connection from your Exchange server (required to download the Microsoft Safety Scanner and the IIS URL Rewrite Module).
 * PowerShell script must be run as Administrator.
 
-### System Requirements
+## System Requirements
 * PowerShell 3 or later
 * IIS 7.5 and later
 * Exchange 2013, 2016, or 2019
 * Windows Server 2008 R2, Server 2012, Server 2012 R2, Server 2016, Server 2019
 * ***+New*** If Operating System is older than Windows Server 2016, must have [KB2999226](https://support.microsoft.com/en-us/topic/update-for-universal-c-runtime-in-windows-c0514201-7fe6-95a3-b0a5-287930f3560c) for IIS Rewrite Module 2.1 to work.
 
-### Who should run the Exchange On-premises Mitigation Tool
+## Who should run the Exchange On-premises Mitigation Tool
 
 Situation | Guidance
 -|-
 If you have done nothing to date to patch or mitigate this issue… | Run EOMT.PS1 as soon as possible.This will both attempt to remediate as well as mitigate your servers against further attacks. Once complete, follow patching guidance to update your servers on http://aka.ms/exchangevulns
-If you have mitigated using any/all of the mitigation guidance Microsoft has given (Exchangemitigations.Ps1, Blog post, etc..) | Run EOMT.PS1 as soon as possible.  This will both attempt to remediate as well as mitigate your servers against further attacks.   Once complete, follow patching guidance to update your servers on http://aka.ms/exchangevulns
+If you have mitigated using any/all of the mitigation guidance Microsoft has given (ExchangeMitigations.Ps1, Blog post, etc..) | Run EOMT.PS1 as soon as possible.  This will both attempt to remediate as well as mitigate your servers against further attacks.   Once complete, follow patching guidance to update your servers on http://aka.ms/exchangevulns
 If you have already patched your systems and are protected, but did NOT investigate for any adversary activity, indicators of compromise, etc…. | Run EOMT.PS1 as soon as possible.   This will attempt to remediate any existing compromise that may not have been full remediated before patching.
 If you have already patched and investigated your systems for any indicators of compromise, etc…. | No action is required
 
-### Important note regarding Microsoft Safety Scanner
+## Important note regarding Microsoft Safety Scanner
  The Exchange On-premises Mitigation Tool runs the Microsoft Safety Scanner in a quick scan mode. If you suspect any compromise, we highly recommend you run it in the FULL SCAN mode. FULL SCAN mode can take a long time but if you are not running Microsoft Defender AV as your default AV, FULL SCAN will be required to remediate threats.
 
-### Exchange On-premises Mitigation Tool Examples
+## Exchange On-premises Mitigation Tool Examples
 The default recommended way of using EOMT.ps1. This will determine if your server is vulnerable, mitigate if vulnerable, and run MSERT in quick scan mode. If the server is not vulnerable only MSERT quick scan will run.
 
 `.\EOMT.ps1`
@@ -61,15 +56,15 @@ To run the Exchange On-premises Mitigation Tool with MSERT in detect only mode -
 
 To roll back the Exchange On-premises Mitigation Tool mitigations
 
-`.\EOMT.ps1 -Rollbackmitigation`
+`.\EOMT.ps1 -RollbackMitigation`
 
 Note: If ExchangeMitigations.ps1 was used previously to apply mitigations, Use ExchangeMitigations.ps1 for rollback.
 
-***+NEW*** EOMT will now autoupdate by downloading the latest version from GitHub. To prevent EOMT from fetching updates to EOMT.ps1 from the internet.
+***+NEW*** EOMT will now AutoUpdate by downloading the latest version from GitHub. To prevent EOMT from fetching updates to EOMT.ps1 from the internet.
 
 `.\EOMT.ps1 -DoNotAutoUpdateEOMT`
 
-### Exchange On-premises Mitigation Tool Q & A
+## Exchange On-premises Mitigation Tool Q & A
 
 **Question**: What mode should I run EOMT.ps1 in by default?
 
@@ -81,7 +76,7 @@ This will run the default mode which does the following:
 3. Applies the URL rewrite mitigation **(only if vulnerable)**.
 4. Runs the Microsoft Safety Scanner in "Quick Scan" mode **(vulnerable or not)**.
 
-**Question**:  What if I run a full scan and it’s affecting the resources of my servers?
+**Question**:  What if I run a full scan and it's affecting the resources of my servers?
 
 **Answer**:  You can terminate the process of the scan by running the following command in an Administrative PowerShell session.
 
@@ -91,13 +86,13 @@ This will run the default mode which does the following:
 
 **Answer**:  The Exchange On-premises Mitigation Tool was released to help pull together multiple mitigation and response steps, whereas the previous script simply enabled mitigations. Some details on what each do:
 
-#### EOMT.PS1
+### EOMT.PS1
 * Mitigation of CVE-2021-26855 via a URL Rewrite configuration.
 * Mitigation does not impact Exchange functionality.
 * Malware scan of the Exchange Server via the Microsoft Safety Scanner
 * Attempt to reverse any changes made by identified threats.
-#### ExchangeMitigations.ps1:
-* Does mitigations for all 4 CVE’s - CVE-2021-26855, CVE-2021-26857, CVE-2021-27065 & CVE-2021-26858.
+### ExchangeMitigations.ps1:
+* Does mitigations for all 4 CVE's - CVE-2021-26855, CVE-2021-26857, CVE-2021-27065 & CVE-2021-26858.
 * Some of the mitigation methods impact Exchange functionality.
 * Does not do any scanning for existing compromise or exploitation.
 * Does not take response actions to existing active identified threats.

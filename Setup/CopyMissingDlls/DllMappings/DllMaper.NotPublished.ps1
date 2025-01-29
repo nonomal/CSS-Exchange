@@ -10,7 +10,7 @@ param(
 
 $Overrides = @{"C:\Program Files\Microsoft\Exchange Server\V15\Bin".ToLower() = "D:\Setup\ServerRoles\Common".ToLower() }
 
-Function Get-MatchingObject {
+function Get-MatchingObject {
     param(
         [object]$InstallChildObject,
         [object]$IsoChildObject
@@ -23,7 +23,7 @@ Function Get-MatchingObject {
     }
 }
 
-Function Find-BestObject {
+function Find-BestObject {
     param(
         [object]$InstallChildObject,
         [array]$IsoFoundChildObjects
@@ -67,7 +67,6 @@ Function Find-BestObject {
                 Select-Object -First 1).Group[0].Path
     }
 
-
     #see if we have more than 1 location in Exchange
     $installedFound = $installedDlls |
         Where-Object {
@@ -75,10 +74,9 @@ Function Find-BestObject {
         }
 
     #only 1 in the install path
-    Function Get-BestFromMultiIsoFound {
+    function Get-BestFromMultiIsoFound {
 
         $testingDirectory = $InstallChildObject.Directory.ToString().ToLower()
-
 
         if ($Overrides.ContainsKey($testingDirectory)) {
 
@@ -141,10 +139,6 @@ Function Find-BestObject {
     Write-Debug("hmmm...") -Debug
 }
 
-
-
-
-
 $Script:installedDlls = Get-ChildItem -Recurse $ExInstall |
     Where-Object { $_.Name.ToLower().EndsWith(".dll") -and
         !$_.FullName.StartsWith("$ExInstall\Bin\Search\Ceres\HostController\Data\Repository\") }
@@ -206,13 +200,13 @@ foreach ($isoGroupings in $groupIso) {
         }
     }
 
-    $dontCopyDlls = New-Object 'System.Collections.Generic.List[object]'
+    $doNotCopyDlls = New-Object 'System.Collections.Generic.List[object]'
     $isoGroupings.Group |
         Where-Object { $_ -ne $greatestGroup } |
         ForEach-Object {
             $_.DllFileNames | ForEach-Object {
                 if (!$greatestGroup.DLLFileNames.Contains($_)) {
-                    $dontCopyDlls.Add($_)
+                    $doNotCopyDlls.Add($_)
                 }
             }
         }
@@ -234,7 +228,7 @@ foreach ($isoGroupings in $groupIso) {
         [PSCustomObject]@{
             IsoRoot        = $IsoRoot
             CopyTo         = $greatestGroup.InstallDirectory
-            Except         = $dontCopyDlls
+            Except         = $doNotCopyDlls
             OtherLocations = $otherLocations
         }
     )

@@ -15,11 +15,14 @@ param(
 )
 
 . $PSScriptRoot\..\Shared\SetupLogReviewerLogic.ps1
+. $PSScriptRoot\..\..\Shared\Write-ErrorInformation.ps1
+
+$BuildVersion = ""
 
 try {
+    Write-Host "Setup Log Reviewer Version: $BuildVersion"
     Invoke-SetupLogReviewer -SetupLog $SetupLog -DelegatedSetup:$DelegatedSetup
 } catch {
-    "$($Error[0].Exception)" | Write-Output
-    "$($Error[0].ScriptStackTrace)" | Write-Output
+    Write-HostErrorInformation $_ "Write-Host"
     Write-Warning ("Ran into an issue with the script. If possible please email the Setup Log to 'ExToolsFeedback@microsoft.com', or at least notify them of the issue.")
 }

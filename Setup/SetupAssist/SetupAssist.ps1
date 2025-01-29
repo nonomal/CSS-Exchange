@@ -13,40 +13,79 @@ param(
 
 . $PSScriptRoot\Checks\Domain\Test-ComputersContainerExists.ps1
 . $PSScriptRoot\Checks\Domain\Test-DomainControllerDnsHostName.ps1
+. $PSScriptRoot\Checks\Domain\Test-DomainMultiActiveSyncVirtualDirectories.ps1
 . $PSScriptRoot\Checks\Domain\Test-ExchangeADSetupLevel.ps1
-. $PSScriptRoot\Checks\Domain\Test-OtherWellKnownObjects.ps1
-. $PSScriptRoot\Checks\Domain\Test-ReadOnlyDomainControllerLocation.ps1
-. $PSScriptRoot\Checks\Domain\Test-ValidHomeMdb.ps1
+. $PSScriptRoot\Checks\Domain\Test-DomainOtherWellKnownObjects.ps1
+. $PSScriptRoot\Checks\Domain\Test-ValidMailboxProperties.ps1
 . $PSScriptRoot\Checks\LocalServer\Test-ExecutionPolicy.ps1
 . $PSScriptRoot\Checks\LocalServer\Test-ExchangeServices.ps1
+. $PSScriptRoot\Checks\LocalServer\Test-InstallWatermark.ps1
 . $PSScriptRoot\Checks\LocalServer\Test-MissingDirectory.ps1
 . $PSScriptRoot\Checks\LocalServer\Test-MsiCacheFiles.ps1
 . $PSScriptRoot\Checks\LocalServer\Test-PendingReboot.ps1
 . $PSScriptRoot\Checks\LocalServer\Test-PrerequisiteInstalled.ps1
 . $PSScriptRoot\Checks\LocalServer\Test-VirtualDirectoryConfiguration.ps1
-. $PSScriptRoot\..\..\Shared\Out-Columns.ps1
+. $PSScriptRoot\Checks\UserContext\Test-UserIsAdministrator.ps1
+. $PSScriptRoot\..\Shared\SetupLogReviewerLogic.ps1
+. $PSScriptRoot\..\..\Shared\LoggerFunctions.ps1
+. $PSScriptRoot\..\..\Shared\Write-ErrorInformation.ps1
+. $PSScriptRoot\..\..\Shared\OutputOverrides\Write-Host.ps1
+. $PSScriptRoot\..\..\Shared\OutputOverrides\Write-Verbose.ps1
+. $PSScriptRoot\..\..\Shared\OutputOverrides\Write-Warning.ps1
+. $PSScriptRoot\..\..\Shared\ScriptUpdateFunctions\Test-ScriptVersion.ps1
+. $PSScriptRoot\WriteFunctions.ps1
 
+$BuildVersion = ""
 
-Function RunAllTests {
-    Test-ExchangeADSetupLevel
-    Test-ExecutionPolicy
-    Test-ExchangeServices
-    Test-ComputersContainerExists
-    Test-DomainControllerDnsHostName
-    Test-MissingDirectory
-    Test-MsiCacheFiles
-    Test-PrerequisiteInstalled
-    Test-ReadOnlyDomainControllerLocation
-    Test-OtherWellKnownObjects
-    Test-PendingReboot
-    Test-ValidHomeMDB
-    Test-VirtualDirectoryConfiguration
+function WriteCatchInfo {
+    Write-HostErrorInformation $Error[0]
+    $Script:ErrorOccurred = $true
 }
 
-Function Main {
+function RunAllTests {
+    $tests = @("Test-UserIsAdministrator",
+        "Test-ExchangeADSetupLevel",
+        "Test-ExecutionPolicy",
+        "Test-ExchangeServices",
+        "Test-ComputersContainerExists",
+        "Test-DomainControllerDnsHostName",
+        "Test-DomainMultiActiveSyncVirtualDirectories",
+        "Test-InstallWatermark",
+        "Test-MissingDirectory",
+        "Test-MsiCacheFiles",
+        "Test-PrerequisiteInstalled",
+        "Test-DomainOtherWellKnownObjects",
+        "Test-PendingReboot",
+        "Test-ValidMailboxProperties",
+        "Test-VirtualDirectoryConfiguration")
+
+    foreach ($test in $tests) {
+        try {
+            Write-Verbose "Working on test $test"
+            & $test
+        } catch {
+            Write-Host "Failed to properly run $test"
+            WriteCatchInfo
+        }
+    }
+}
+
+function Main {
 
     $results = RunAllTests
-    $results | Export-Csv "$PSScriptRoot\SetupAssistResults-$((Get-Date).ToString("yyyyMMddhhmm")).csv" -NoTypeInformation
+    $exportObject = New-Object 'System.Collections.Generic.List[object]'
+
+    $results |
+        ForEach-Object {
+            $exportObject.Add([PSCustomObject]@{
+                    TestName      = $_.TestName
+                    Result        = $_.Result
+                    Details       = $_.Details | Out-String
+                    ReferenceInfo = $_.ReferenceInfo | Out-String
+                })
+        }
+
+    $exportObject | Export-Csv "$PSScriptRoot\SetupAssistResults-$((Get-Date).ToString("yyyyMMddhhmm")).csv" -NoTypeInformation
 
     $sbResults = {
         param($o, $p)
@@ -62,7 +101,6 @@ Function Main {
         }
     }
 
-    #TODO: Add check for log reviewer check that was there
     $quickResults = $results | Group-Object TestName |
         ForEach-Object {
             $result = $_.Group.Result | Where-Object { $_ -ne "Passed" } | Select-Object -First 1
@@ -80,7 +118,7 @@ Function Main {
             }
             New-TestResult @params
         }
-    $quickResults | Out-Columns -Properties @("TestName", "Result", "Details") -ColorizerFunctions $sbResults
+    $quickResults | Write-OutColumns -Properties @("TestName", "Result", "Details") -ColorizerFunctions $sbResults
 
     Write-Host ""
     Write-Host "-----Results That Didn't Pass-----"
@@ -92,7 +130,18 @@ Function Main {
             Details       = $_.Group.Details
             ReferenceInfo = $_.Group.ReferenceInfo | Select-Object -Unique
         }
-    } | Out-Columns -IndentSpaces 5 -LinesBetweenObjects 2
+    } | Write-OutColumns -IndentSpaces 5 -LinesBetweenObjects 2
+
+    Write-Host ""
+    Write-Host "Setup Log Reviewer Results"
+    Write-Host "--------------------------"
+    Write-Host ""
+    $setupLog = "$env:SystemDrive\ExchangeSetupLogs\ExchangeSetup.log"
+    if ((Test-Path $setupLog)) {
+        Invoke-SetupLogReviewer -SetupLog $SetupLog
+    } else {
+        Write-Host "No Exchange Setup Log to test against"
+    }
 }
 
 try {
@@ -101,10 +150,37 @@ try {
         return
     }
 
+    $instance = (Get-Date).ToString("yyyyMMddhhmmss")
+    $Script:DebugLogger = Get-NewLoggerInstance -LogName "SetupAssist-$instance-Debug" `
+        -AppendDateTimeToFileName $false `
+        -ErrorAction SilentlyContinue
+    $Script:HostLogger = Get-NewLoggerInstance -LogName "SetupAssist-$instance" `
+        -AppendDateTimeToFileName $false `
+        -ErrorAction SilentlyContinue
+    SetWriteHostAction ${Function:Write-HostLog}
+    SetWriteVerboseAction ${Function:Write-DebugLog}
+    SetWriteWarningAction ${Function:Write-DebugLog}
+
+    if ((Test-ScriptVersion -AutoUpdate -VersionsUrl "https://aka.ms/SA-VersionsUrl")) {
+        Write-Host "Script was updated. Please rerun the script."
+        return
+    }
+
+    Write-Host "Setup Assist Version $BuildVersion"
+
     Main
 } catch {
-    "$($_.Exception)" | Write-Output
-    "$($_.ScriptStackTrace)" | Write-Output
-    Write-Warning ("Ran into an issue with the script. If possible please email 'ExToolsFeedback@microsoft.com' of the issue that you are facing")
-}
+    Write-Host "Failed in Main"
+    WriteCatchInfo
+} finally {
+    if ($Script:ErrorOccurred) {
+        Write-Warning ("Ran into an issue with the script. If possible please email 'ExToolsFeedback@microsoft.com' of the issue that you are facing including the SetupAssist-Debug.txt file.")
+    }
 
+    Write-Host("Do you like the script? Visit https://aka.ms/ExchangeSetupAssist-Feedback to rate it and to provide feedback.") -ForegroundColor Green
+
+    if ((-not ($Script:ErrorOccurred)) -and
+        (-not ($PSBoundParameters["Verbose"]))) {
+        $Script:DebugLogger | Invoke-LoggerInstanceCleanup
+    }
+}

@@ -1,12 +1,15 @@
 ﻿# Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-Function Test-NoSwitchesProvided {
+. $PSScriptRoot\Enter-YesNoLoopAction.ps1
+function Test-NoSwitchesProvided {
     if ($EWSLogs -or
         $IISLogs -or
         $DailyPerformanceLogs -or
         $ManagedAvailabilityLogs -or
-        $Experfwiz -or
+        $ConversationLogs -or
+        $EventBasedAssistantsLogs -or
+        $ExPerfWiz -or
         $RPCLogs -or
         $EASLogs -or
         $ECPLogs -or
@@ -18,21 +21,22 @@ Function Test-NoSwitchesProvided {
         $MapiLogs -or
         $Script:AnyTransportSwitchesEnabled -or
         $DAGInformation -or
-        $GetVdirs -or
+        $GetVDirs -or
         $OrganizationConfig -or
-        $Exmon -or
+        $ExMon -or
         $ServerInformation -or
         $PopLogs -or
         $ImapLogs -or
         $OABLogs -or
         $PowerShellLogs -or
         $WindowsSecurityLogs -or
+        $MailboxAssistantsLogs -or
         $ExchangeServerInformation -or
         $MitigationService
     ) {
         return
     } else {
-        Write-ScriptHost -WriteString "`r`nWARNING: Doesn't look like any parameters were provided, are you sure you are running the correct command? This is ONLY going to collect the Application and System Logs." -ShowServer $false -ForegroundColor "Yellow"
+        Write-Host "`r`nWARNING: Doesn't look like any parameters were provided, are you sure you are running the correct command? This is ONLY going to collect the Application and System Logs." -ForegroundColor "Yellow"
         Enter-YesNoLoopAction -Question "Would you like to continue?" -YesAction { Write-Host "Okay moving on..." } -NoAction { exit }
     }
 }

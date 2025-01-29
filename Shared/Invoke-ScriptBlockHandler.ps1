@@ -2,8 +2,11 @@
 # Licensed under the MIT License.
 
 . $PSScriptRoot\Invoke-CatchActionError.ps1
+. $PSScriptRoot\Invoke-CatchActionErrorLoop.ps1
 
-Function Invoke-ScriptBlockHandler {
+# Common method used to handle Invoke-Command within a script.
+# Avoids using Invoke-Command when running locally on a server.
+function Invoke-ScriptBlockHandler {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -11,7 +14,7 @@ Function Invoke-ScriptBlockHandler {
         $ComputerName,
 
         [Parameter(Mandatory = $true)]
-        [scriptblock]
+        [ScriptBlock]
         $ScriptBlock,
 
         [string]
@@ -23,12 +26,13 @@ Function Invoke-ScriptBlockHandler {
         [bool]
         $IncludeNoProxyServerOption,
 
-        [scriptblock]
+        [ScriptBlock]
         $CatchActionFunction
     )
     begin {
         Write-Verbose "Calling: $($MyInvocation.MyCommand)"
         $returnValue = $null
+        $currentErrors = $null
     }
     process {
 
@@ -60,18 +64,34 @@ Function Invoke-ScriptBlockHandler {
 
                 $returnValue = Invoke-Command @params
             } else {
+                # Handle possible errors when executed locally.
+                $currentErrors = $Error.Count
 
                 if ($null -ne $ArgumentList) {
                     Write-Verbose "Running Script Block Locally with argument list"
-                    $returnValue = & $ScriptBlock $ArgumentList
+
+                    # if an object array type expect the result to be multiple parameters
+                    if ($ArgumentList.GetType().Name -eq "Object[]") {
+                        $returnValue = & $ScriptBlock @ArgumentList
+                    } else {
+                        $returnValue = & $ScriptBlock $ArgumentList
+                    }
                 } else {
                     Write-Verbose "Running Script Block Locally without argument list"
                     $returnValue = & $ScriptBlock
                 }
+
+                Invoke-CatchActionErrorLoop $currentErrors $CatchActionFunction
             }
         } catch {
-            Write-Verbose "Failed to run $($MyInvocation.MyCommand)"
-            Invoke-CatchActionError $CatchActionFunction
+            Write-Verbose "Failed to run $($MyInvocation.MyCommand) - $ScriptBlockDescription"
+
+            # Possible that locally we hit multiple errors prior to bailing out.
+            if ($null -ne $currentErrors) {
+                Invoke-CatchActionErrorLoop $currentErrors $CatchActionFunction
+            } else {
+                Invoke-CatchActionError $CatchActionFunction
+            }
         }
     }
     end {

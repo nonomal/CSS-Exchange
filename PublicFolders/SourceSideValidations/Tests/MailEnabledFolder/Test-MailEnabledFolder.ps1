@@ -89,7 +89,6 @@ function Test-MailEnabledFolder {
             NewTestMailEnabledFolderResult @params
         }
 
-
         $mailPublicFoldersLinked = New-Object 'System.Collections.Generic.Dictionary[string, object]'
         $progressParams.CurrentOperation = "Checking for missing AD objects"
         $startTimeForThisCheck = Get-Date
@@ -130,7 +129,6 @@ function Test-MailEnabledFolder {
                 $_
             })
 
-
         $progressCount = 0
         $progressParams.CurrentOperation = "Checking for orphaned MailPublicFolders"
         $orphanedMailPublicFolders = @($allMailPublicFolders | ForEach-Object {
@@ -144,7 +142,6 @@ function Test-MailEnabledFolder {
                     $_
                 }
             })
-
 
         $progressParams.CurrentOperation = "Building EntryId HashSets"
         Write-Progress @progressParams
@@ -162,7 +159,7 @@ function Test-MailEnabledFolder {
 
             $thisMPF = $orphanedMailPublicFolders[$i]
             $pf = $null
-            if ($null -ne $thisMPF.ExternalEmailAddress -and $thisMPF.ExternalEmailAddress.ToString().StartsWith("expf")) {
+            if ($null -ne $thisMPF.ExternalEmailAddress -and $thisMPF.ExternalEmailAddress.ToString().StartsWith("exPf".ToLower())) {
                 $partialEntryId = $thisMPF.ExternalEmailAddress.ToString().Substring(5).Replace("-", "")
                 $partialEntryId += "0000"
                 if ($byPartialEntryId.TryGetValue($partialEntryId, [ref]$pf)) {

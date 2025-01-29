@@ -7,7 +7,7 @@ BeforeAll {
 
     . "$parent\$scriptName"
 
-    Function Get-SCCMRebootObject {
+    function Get-SCCMRebootObject {
         $t = New-Object PSCustomObject
         $t | Add-Member -MemberType NoteProperty -Name "RebootPending" -Value $false
         $t | Add-Member -MemberType NoteProperty -Name "IsHardRebootPending" -Value $false
@@ -46,7 +46,6 @@ Describe "Testing Get-ServerRebootPending" {
             $results.PendingReboot | Should -Be $false
         }
     }
-
 
     Context "Full Test on Get-PendingSCCMReboot" {
 

@@ -29,7 +29,7 @@
     .OUTPUTS
      $results.TopRecipients : hourly report for top recipients over the threshold
      $results.HourlyReport  : hourly aggregated message events without applying the threshold
-     $results.MessageTraceEevents: all downloaded message trace events without aggregations
+     $results.MessageTraceEvents: all downloaded message trace events without aggregations
 #>
 [CmdletBinding()]
 param
@@ -54,7 +54,7 @@ $CreateHourlyReport =
             if ($hourlyEvent.RecipientAddress -eq $_.RecipientAddress -and $hourlyEvent.Hour -eq $_.Received.Hour) {
                 $hourlyEvent.MessageCount +=1
             } else {
-                $eventObj = New-Object PSObject -Property @{ Hour=$_.Received.Hour; Date=$_.Received.Date.ToString("dd/mm/yyyy dd:hh tt"); MessageCount=1; RecipientAddress=$_.RecipientAddress };
+                $eventObj = New-Object PSObject -Property @{ Hour=$_.Received.Hour; Date=$_.Received.Date.ToString("dd/mm/yyyy dd:hh tt"); MessageCount=1; RecipientAddress=$_.RecipientAddress }
                 [void]$hourlyReport.Add($eventObj)
             }
         }
@@ -68,13 +68,13 @@ $GetDeliveredMessageTraceEvents =
     [int]$page=1
     [DateTime]$timeout = (Get-Date).AddMinutes($TimeoutAfter)
 
-    Do {
+    do {
         Write-Host "Processing Page $($page)"
         $pageList = New-Object -TypeName "System.Collections.ArrayList"
         $pageList = Get-MessageTrace -StartDate $StartDate -EndDate $EndDate -Page $page -PageSize 5000 -Status Delivered
         $eventList += $pageList
         $page++
-    }While ($pageList.count -eq 5000 -and (Get-Date) -lt $timeout)
+    }while ($pageList.count -eq 5000 -and (Get-Date) -lt $timeout)
     return $eventList
 }
 
@@ -93,6 +93,5 @@ $props = [ordered]@{
     'HourlyReport'       = $hourlyReport
     'MessageTraceEvents' = $eventList
 }
-$results = New-Object -TypeName PSObject -Property $props;
+$results = New-Object -TypeName PSObject -Property $props
 return $results
-

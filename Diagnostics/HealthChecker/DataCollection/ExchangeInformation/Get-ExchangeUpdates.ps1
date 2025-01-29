@@ -2,22 +2,27 @@
 # Licensed under the MIT License.
 
 . $PSScriptRoot\..\..\..\..\Shared\Get-RemoteRegistrySubKey.ps1
-Function Get-ExchangeUpdates {
+function Get-ExchangeUpdates {
     param(
-        [Parameter(Mandatory = $true)][HealthChecker.ExchangeMajorVersion]$ExchangeMajorVersion
+        [Parameter(Mandatory = $true)]
+        [string]$Server,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("Exchange2013", "Exchange2016", "Exchange2019")]
+        [string]$ExchangeMajorVersion
     )
     Write-Verbose("Calling: $($MyInvocation.MyCommand) Passed: $ExchangeMajorVersion")
     $RegLocation = [string]::Empty
 
-    if ([HealthChecker.ExchangeMajorVersion]::Exchange2013 -eq $ExchangeMajorVersion) {
+    if ("Exchange2013" -eq $ExchangeMajorVersion) {
         $RegLocation = "SOFTWARE\Microsoft\Updates\Exchange 2013"
-    } elseif ([HealthChecker.ExchangeMajorVersion]::Exchange2016 -eq $ExchangeMajorVersion) {
+    } elseif ("Exchange2016" -eq $ExchangeMajorVersion) {
         $RegLocation = "SOFTWARE\Microsoft\Updates\Exchange 2016"
     } else {
         $RegLocation = "SOFTWARE\Microsoft\Updates\Exchange 2019"
     }
 
-    $RegKey = Get-RemoteRegistrySubKey -MachineName $Script:Server `
+    $RegKey = Get-RemoteRegistrySubKey -MachineName $Server `
         -SubKey $RegLocation `
         -CatchActionFunction ${Function:Invoke-CatchActions}
 
@@ -25,14 +30,18 @@ Function Get-ExchangeUpdates {
         $IU = $RegKey.GetSubKeyNames()
         if ($null -ne $IU) {
             Write-Verbose "Detected fixes installed on the server"
-            $fixes = @()
+            $installedUpdates = New-Object System.Collections.Generic.List[object]
             foreach ($key in $IU) {
                 $IUKey = $RegKey.OpenSubKey($key)
                 $IUName = $IUKey.GetValue("PackageName")
                 Write-Verbose "Found: $IUName"
-                $fixes += $IUName
+                $IUInstalledDate = $IUKey.GetValue("InstalledDate")
+                $installedUpdates.Add(([PSCustomObject]@{
+                            PackageName   = $IUName
+                            InstalledDate = $IUInstalledDate
+                        }))
             }
-            return $fixes
+            return $installedUpdates
         } else {
             Write-Verbose "No IUs found in the registry"
         }

@@ -1,7 +1,7 @@
 ﻿# Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-Function Invoke-AnalyzerSecurityExchangeCertificates {
+function Invoke-AnalyzerSecurityExchangeCertificates {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -16,6 +16,10 @@ Function Invoke-AnalyzerSecurityExchangeCertificates {
 
     Write-Verbose "Calling: $($MyInvocation.MyCommand)"
     $exchangeInformation = $HealthServerObject.ExchangeInformation
+    $baseParams = @{
+        AnalyzedInformation = $AnalyzeResults
+        DisplayGroupingKey  = $DisplayGroupingKey
+    }
 
     foreach ($certificate in $exchangeInformation.ExchangeCertificates) {
 
@@ -27,38 +31,53 @@ Function Invoke-AnalyzerSecurityExchangeCertificates {
             $displayColor = "Red"
         }
 
-        $AnalyzeResults | Add-AnalyzedResultInformation -Name "Certificate" `
-            -DisplayGroupingKey $DisplayGroupingKey `
-            -DisplayCustomTabNumber 1
-
-        $AnalyzeResults | Add-AnalyzedResultInformation -Name "FriendlyName" -Details $certificate.FriendlyName `
-            -DisplayGroupingKey $DisplayGroupingKey `
-            -DisplayCustomTabNumber 2
-
-        $AnalyzeResults | Add-AnalyzedResultInformation -Name "Thumbprint" -Details $certificate.Thumbprint `
-            -DisplayGroupingKey $DisplayGroupingKey `
-            -DisplayCustomTabNumber 2
-
-        $AnalyzeResults | Add-AnalyzedResultInformation -Name "Lifetime in days" -Details $certificate.LifetimeInDays `
-            -DisplayGroupingKey $DisplayGroupingKey `
-            -DisplayCustomTabNumber 2 `
-            -DisplayWriteType $displayColor
-
-        if ($certificate.LifetimeInDays -lt 0) {
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Certificate has expired" -Details $true `
-                -DisplayGroupingKey $DisplayGroupingKey `
-                -DisplayCustomTabNumber 2 `
-                -DisplayWriteType "Red"
-        } else {
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Certificate has expired" -Details $false `
-                -DisplayGroupingKey $DisplayGroupingKey `
-                -DisplayCustomTabNumber 2
+        $params = $baseParams + @{
+            Name                   = "Certificate"
+            DisplayCustomTabNumber = 1
         }
+        Add-AnalyzedResultInformation @params
+
+        $params = $baseParams + @{
+            Name                   = "FriendlyName"
+            Details                = $certificate.FriendlyName
+            DisplayCustomTabNumber = 2
+        }
+        Add-AnalyzedResultInformation @params
+
+        $params = $baseParams + @{
+            Name                   = "Thumbprint"
+            Details                = $certificate.Thumbprint
+            DisplayCustomTabNumber = 2
+        }
+        Add-AnalyzedResultInformation @params
+
+        $params = $baseParams + @{
+            Name                   = "Lifetime in days"
+            Details                = $certificate.LifetimeInDays
+            DisplayCustomTabNumber = 2
+            DisplayWriteType       = $displayColor
+        }
+        Add-AnalyzedResultInformation @params
+
+        $displayValue = $false
+        $displayWriteType = "Grey"
+        if ($certificate.LifetimeInDays -lt 0) {
+            $displayValue = $true
+            $displayWriteType = "Red"
+        }
+
+        $params = $baseParams + @{
+            Name                   = "Certificate has expired"
+            Details                = $displayValue
+            DisplayWriteType       = $displayWriteType
+            DisplayCustomTabNumber = 2
+        }
+        Add-AnalyzedResultInformation @params
 
         $certStatusWriteType = [string]::Empty
 
         if ($null -ne $certificate.Status) {
-            Switch ($certificate.Status) {
+            switch ($certificate.Status) {
                 ("Unknown") { $certStatusWriteType = "Yellow" }
                 ("Valid") { $certStatusWriteType = "Grey" }
                 ("Revoked") { $certStatusWriteType = "Red" }
@@ -70,32 +89,56 @@ Function Invoke-AnalyzerSecurityExchangeCertificates {
                 default { $certStatusWriteType = "Yellow" }
             }
 
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Certificate status" -Details $certificate.Status `
-                -DisplayGroupingKey $DisplayGroupingKey `
-                -DisplayCustomTabNumber 2 `
-                -DisplayWriteType $certStatusWriteType
+            $params = $baseParams + @{
+                Name                   = "Certificate status"
+                Details                = $certificate.Status
+                DisplayCustomTabNumber = 2
+                DisplayWriteType       = $certStatusWriteType
+            }
+            Add-AnalyzedResultInformation @params
         } else {
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Certificate status" -Details "Unknown" `
-                -DisplayGroupingKey $DisplayGroupingKey `
-                -DisplayCustomTabNumber 2 `
-                -DisplayWriteType "Yellow"
+            $params = $baseParams + @{
+                Name                   = "Certificate status"
+                Details                = "Unknown"
+                DisplayWriteType       = "Yellow"
+                DisplayCustomTabNumber = 2
+            }
+            Add-AnalyzedResultInformation @params
         }
 
-        if ($certificate.PublicKeySize -lt 2048) {
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Key size" -Details $certificate.PublicKeySize `
-                -DisplayGroupingKey $DisplayGroupingKey `
-                -DisplayCustomTabNumber 2 `
-                -DisplayWriteType "Red"
+        # We show the 'Key Size' if a certificate is RSA or DSA based but not for ECC certificates where it would be displayed with a value of 0
+        # More information: https://stackoverflow.com/questions/32873851/load-a-certificate-using-x509certificate2-with-ecc-public-key
+        if ($certificate.PublicKeySize -lt 2048 -and
+            -not($certificate.IsEccCertificate)) {
+            $params = $baseParams + @{
+                Name                   = "Key size"
+                Details                = $certificate.PublicKeySize
+                DisplayWriteType       = "Red"
+                DisplayCustomTabNumber = 2
+            }
+            Add-AnalyzedResultInformation @params
 
-            $AnalyzeResults | Add-AnalyzedResultInformation -Details "It's recommended to use a key size of at least 2048 bit" `
-                -DisplayGroupingKey $DisplayGroupingKey `
-                -DisplayCustomTabNumber 2 `
-                -DisplayWriteType "Red"
-        } else {
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Key size" -Details $certificate.PublicKeySize `
-                -DisplayGroupingKey $DisplayGroupingKey `
-                -DisplayCustomTabNumber 2
+            $params = $baseParams + @{
+                Details                = "It's recommended to use a key size of at least 2048 bit"
+                DisplayWriteType       = "Red"
+                DisplayCustomTabNumber = 2
+            }
+            Add-AnalyzedResultInformation @params
+        } elseif (-not($certificate.IsEccCertificate)) {
+            $params = $baseParams + @{
+                Name                   = "Key size"
+                Details                = $certificate.PublicKeySize
+                DisplayCustomTabNumber = 2
+            }
+            Add-AnalyzedResultInformation @params
         }
+
+        $params = $baseParams + @{
+            Name                   = "ECC Certificate"
+            Details                = $certificate.IsEccCertificate
+            DisplayCustomTabNumber = 2
+        }
+        Add-AnalyzedResultInformation @params
 
         if ($certificate.SignatureHashAlgorithmSecure -eq 1) {
             $shaDisplayWriteType = "Yellow"
@@ -103,90 +146,219 @@ Function Invoke-AnalyzerSecurityExchangeCertificates {
             $shaDisplayWriteType = "Grey"
         }
 
-        $AnalyzeResults | Add-AnalyzedResultInformation -Name "Signature Algorithm" -Details $certificate.SignatureAlgorithm `
-            -DisplayGroupingKey $DisplayGroupingKey `
-            -DisplayCustomTabNumber 2 `
-            -DisplayWriteType $shaDisplayWriteType
+        $params = $baseParams + @{
+            Name                   = "Signature Algorithm"
+            Details                = $certificate.SignatureAlgorithm
+            DisplayWriteType       = $shaDisplayWriteType
+            DisplayCustomTabNumber = 2
+        }
+        Add-AnalyzedResultInformation @params
 
-        $AnalyzeResults | Add-AnalyzedResultInformation -Name "Signature Hash Algorithm" -Details $certificate.SignatureHashAlgorithm `
-            -DisplayGroupingKey $DisplayGroupingKey `
-            -DisplayCustomTabNumber 2 `
-            -DisplayWriteType $shaDisplayWriteType
+        $params = $baseParams + @{
+            Name                   = "Signature Hash Algorithm"
+            Details                = $certificate.SignatureHashAlgorithm
+            DisplayWriteType       = $shaDisplayWriteType
+            DisplayCustomTabNumber = 2
+        }
+        Add-AnalyzedResultInformation @params
 
         if ($shaDisplayWriteType -eq "Yellow") {
-            $AnalyzeResults | Add-AnalyzedResultInformation -Details "It's recommended to use a hash algorithm from the SHA-2 family `r`n`t`tMore information: https://aka.ms/HC-SSLBP" `
-                -DisplayGroupingKey $DisplayGroupingKey `
-                -DisplayCustomTabNumber 2 `
-                -DisplayWriteType $shaDisplayWriteType
+            $params = $baseParams + @{
+                Details                = "It's recommended to use a hash algorithm from the SHA-2 family `r`n`t`tMore information: https://aka.ms/HC-SSLBP"
+                DisplayWriteType       = $shaDisplayWriteType
+                DisplayCustomTabNumber = 2
+            }
+            Add-AnalyzedResultInformation @params
         }
 
         if ($null -ne $certificate.Services) {
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Bound to services" -Details $certificate.Services `
-                -DisplayGroupingKey $DisplayGroupingKey `
-                -DisplayCustomTabNumber 2
+            $params = $baseParams + @{
+                Name                   = "Bound to services"
+                Details                = $certificate.Services
+                DisplayCustomTabNumber = 2
+            }
+            Add-AnalyzedResultInformation @params
         }
 
-        if ($exchangeInformation.BuildInformation.ServerRole -ne [HealthChecker.ExchangeServerRole]::Edge) {
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Current Auth Certificate" -Details $certificate.IsCurrentAuthConfigCertificate `
-                -DisplayGroupingKey $DisplayGroupingKey `
-                -DisplayCustomTabNumber 2
+        if ($exchangeInformation.GetExchangeServer.IsEdgeServer -eq $false) {
+            $params = $baseParams + @{
+                Name                   = "Internal Transport Certificate"
+                Details                = $certificate.IsInternalTransportCertificate
+                DisplayCustomTabNumber = 2
+            }
+            Add-AnalyzedResultInformation @params
+
+            $params = $baseParams + @{
+                Name                   = "Current Auth Certificate"
+                Details                = $certificate.IsCurrentAuthConfigCertificate
+                DisplayCustomTabNumber = 2
+            }
+            Add-AnalyzedResultInformation @params
+
+            $params = $baseParams + @{
+                Name                   = "Next Auth Certificate"
+                Details                = $certificate.IsNextAuthConfigCertificate
+                DisplayCustomTabNumber = 2
+            }
+            Add-AnalyzedResultInformation @params
         }
 
-        $AnalyzeResults | Add-AnalyzedResultInformation -Name "SAN Certificate" -Details $certificate.IsSanCertificate `
-            -DisplayGroupingKey $DisplayGroupingKey `
-            -DisplayCustomTabNumber 2
+        $params = $baseParams + @{
+            Name                   = "SAN Certificate"
+            Details                = $certificate.IsSanCertificate
+            DisplayCustomTabNumber = 2
+        }
+        Add-AnalyzedResultInformation @params
 
-        $AnalyzeResults | Add-AnalyzedResultInformation -Name "Namespaces" `
-            -DisplayGroupingKey $DisplayGroupingKey `
-            -DisplayCustomTabNumber 2
+        $params = $baseParams + @{
+            Name                   = "Namespaces"
+            DisplayCustomTabNumber = 2
+        }
+        Add-AnalyzedResultInformation @params
 
         foreach ($namespace in $certificate.Namespaces) {
-            $AnalyzeResults | Add-AnalyzedResultInformation -Details $namespace `
-                -DisplayGroupingKey $DisplayGroupingKey `
-                -DisplayCustomTabNumber 3
+            $params = $baseParams + @{
+                Details                = $namespace
+                DisplayCustomTabNumber = 3
+            }
+            Add-AnalyzedResultInformation @params
+        }
+
+        if ($certificate.IsInternalTransportCertificate) {
+            $internalTransportCertificate = $certificate
         }
 
         if ($certificate.IsCurrentAuthConfigCertificate -eq $true) {
             $currentAuthCertificate = $certificate
+        } elseif ($certificate.IsNextAuthConfigCertificate -eq $true) {
+            $nextAuthCertificate = $certificate
+            $nextAuthCertificateEffectiveDate = $certificate.SetAsActiveAuthCertificateOn
         }
+    }
+
+    if ($null -ne $internalTransportCertificate) {
+        if ($internalTransportCertificate.LifetimeInDays -gt 0) {
+            $params = $baseParams + @{
+                Name                   = "Valid Internal Transport Certificate Found On Server"
+                Details                = $true
+                DisplayWriteType       = "Green"
+                DisplayCustomTabNumber = 1
+            }
+            Add-AnalyzedResultInformation @params
+        } else {
+            $params = $baseParams + @{
+                Name                   = "Valid Internal Transport Certificate Found On Server"
+                Details                = $false
+                DisplayWriteType       = "Red"
+                DisplayCustomTabNumber = 1
+            }
+            Add-AnalyzedResultInformation @params
+
+            $params = $baseParams + @{
+                Details                = "Internal Transport Certificate has expired `r`n`t`tMore Information: https://aka.ms/HC-InternalTransportCertificate"
+                DisplayWriteType       = "Red"
+                DisplayCustomTabNumber = 2
+            }
+            Add-AnalyzedResultInformation @params
+        }
+    } elseif ($exchangeInformation.GetExchangeServer.IsEdgeServer -eq $true) {
+        $params = $baseParams + @{
+            Name                   = "Valid Internal Transport Certificate Found On Server"
+            Details                = $false
+            DisplayCustomTabNumber = 1
+        }
+        Add-AnalyzedResultInformation @params
+
+        $params = $baseParams + @{
+            Details                = "We can't check for Internal Transport Certificate on Edge Transport Servers"
+            DisplayCustomTabNumber = 2
+        }
+        Add-AnalyzedResultInformation @params
+    } else {
+        $params = $baseParams + @{
+            Name                   = "Valid Internal Transport Certificate Found On Server"
+            Details                = $false
+            DisplayWriteType       = "Red"
+            DisplayCustomTabNumber = 1
+        }
+        Add-AnalyzedResultInformation @params
+
+        $params = $baseParams + @{
+            Details                = "No Internal Transport Certificate found. This may cause several problems. `r`n`t`tMore Information: https://aka.ms/HC-InternalTransportCertificate"
+            DisplayWriteType       = "Red"
+            DisplayCustomTabNumber = 2
+        }
+        Add-AnalyzedResultInformation @params
     }
 
     if ($null -ne $currentAuthCertificate) {
         if ($currentAuthCertificate.LifetimeInDays -gt 0) {
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Valid Auth Certificate Found On Server" -Details $true `
-                -DisplayGroupingKey $DisplayGroupingKey `
-                -DisplayCustomTabNumber 1 `
-                -DisplayWriteType "Green"
+            $params = $baseParams + @{
+                Name                   = "Valid Auth Certificate Found On Server"
+                Details                = $true
+                DisplayWriteType       = "Green"
+                DisplayCustomTabNumber = 1
+            }
+            Add-AnalyzedResultInformation @params
         } else {
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Valid Auth Certificate Found On Server" -Details $false `
-                -DisplayGroupingKey $DisplayGroupingKey `
-                -DisplayCustomTabNumber 1 `
-                -DisplayWriteType "Red"
+            $params = $baseParams + @{
+                Name                   = "Valid Auth Certificate Found On Server"
+                Details                = $false
+                DisplayWriteType       = "Red"
+                DisplayCustomTabNumber = 1
+            }
+            Add-AnalyzedResultInformation @params
 
-            $renewExpiredAuthCert = "Auth Certificate has expired `r`n`t`tMore Information: https://aka.ms/HC-OAuthExpired"
-            $AnalyzeResults | Add-AnalyzedResultInformation -Details $renewExpiredAuthCert `
-                -DisplayGroupingKey $DisplayGroupingKey `
-                -DisplayCustomTabNumber 2 `
-                -DisplayWriteType "Red"
+            $params = $baseParams + @{
+                Details                = "Auth Certificate has expired `r`n`t`tMore Information: https://aka.ms/HC-OAuthExpired"
+                DisplayWriteType       = "Red"
+                DisplayCustomTabNumber = 2
+            }
+            Add-AnalyzedResultInformation @params
         }
-    } elseif ($exchangeInformation.BuildInformation.ServerRole -eq [HealthChecker.ExchangeServerRole]::Edge) {
-        $AnalyzeResults | Add-AnalyzedResultInformation -Name "Valid Auth Certificate Found On Server" -Details $false `
-            -DisplayGroupingKey $DisplayGroupingKey `
-            -DisplayCustomTabNumber 1
 
-        $AnalyzeResults | Add-AnalyzedResultInformation -Details "We can't check for Auth Certificates on Edge Transport Servers" `
-            -DisplayGroupingKey $DisplayGroupingKey `
-            -DisplayCustomTabNumber 2
+        if ($null -ne $nextAuthCertificate) {
+            $params = $baseParams + @{
+                Name                   = "Next Auth Certificate Staged For Rotation"
+                Details                = $true
+                DisplayCustomTabNumber = 1
+            }
+            Add-AnalyzedResultInformation @params
+
+            $params = $baseParams + @{
+                Name                   = "Next Auth Certificate Effective Date"
+                Details                = $nextAuthCertificateEffectiveDate
+                DisplayCustomTabNumber = 1
+            }
+            Add-AnalyzedResultInformation @params
+        }
+    } elseif ($exchangeInformation.GetExchangeServer.IsEdgeServer -eq $true) {
+        $params = $baseParams + @{
+            Name                   = "Valid Auth Certificate Found On Server"
+            Details                = $false
+            DisplayCustomTabNumber = 1
+        }
+        Add-AnalyzedResultInformation @params
+
+        $params = $baseParams + @{
+            Details                = "We can't check for Auth Certificates on Edge Transport Servers"
+            DisplayCustomTabNumber = 2
+        }
+        Add-AnalyzedResultInformation @params
     } else {
-        $AnalyzeResults | Add-AnalyzedResultInformation -Name "Valid Auth Certificate Found On Server" -Details $false `
-            -DisplayGroupingKey $DisplayGroupingKey `
-            -DisplayCustomTabNumber 1 `
-            -DisplayWriteType "Red"
+        $params = $baseParams + @{
+            Name                   = "Valid Auth Certificate Found On Server"
+            Details                = $false
+            DisplayWriteType       = "Red"
+            DisplayCustomTabNumber = 1
+        }
+        Add-AnalyzedResultInformation @params
 
-        $createNewAuthCert = "No valid Auth Certificate found. This may cause several problems. `r`n`t`tMore Information: https://aka.ms/HC-FindOAuthHybrid"
-        $AnalyzeResults | Add-AnalyzedResultInformation -Details $createNewAuthCert `
-            -DisplayGroupingKey $DisplayGroupingKey `
-            -DisplayCustomTabNumber 2 `
-            -DisplayWriteType "Red"
+        $params = $baseParams + @{
+            Details                = "No valid Auth Certificate found. This may cause several problems. `r`n`t`tMore Information: https://aka.ms/HC-FindOAuthHybrid"
+            DisplayWriteType       = "Red"
+            DisplayCustomTabNumber = 2
+        }
+        Add-AnalyzedResultInformation @params
     }
 }

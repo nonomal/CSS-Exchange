@@ -1,7 +1,7 @@
 ﻿# Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-Function Write-Result {
+function Write-Result {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
@@ -13,7 +13,7 @@ Function Write-Result {
         } elseif ($WriteObject.WriteType -eq "Error") {
             $WriteObject.WriteData | Write-Error
         } elseif ($WriteObject.WriteType -eq "Host") {
-            $WriteObject.WriteData | Write-Host -ForegroundColor $WriteObject.ForegroundColor
+            Write-Host $WriteObject.WriteData -ForegroundColor $WriteObject.ForegroundColor
         }
     }
 }

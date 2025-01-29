@@ -3,7 +3,7 @@
 
 . $PSScriptRoot\..\New-ActionPlan.ps1
 . $PSScriptRoot\..\New-ErrorContext.ps1
-Function Test-ExceptionADOperationFailedAlreadyExist {
+function Test-ExceptionADOperationFailedAlreadyExist {
     [CmdletBinding()]
     param(
         [Parameter(ValueFromPipeline = $true)]
@@ -23,7 +23,7 @@ Function Test-ExceptionADOperationFailedAlreadyExist {
             if ($exceptionADOperationFailedAlreadyExist.Matches.Groups[2].Value.StartsWith("CN=Folder Hierarchies,CN=Exchange Administrative Group")) {
                 New-ActionPlan @(
                     "Public Folder Object needs to be created",
-                    "- Open ADSIEDIT and go to this location'$($exceptionADOperationFailedAlreadyExist.Matches.Groups[2].Value)'",
+                    "- Open AdsiEdit and go to this location'$($exceptionADOperationFailedAlreadyExist.Matches.Groups[2].Value)'",
                     "- Right Click select New - Object",
                     "- Select mxExchPFTree",
                     "- Enter any value for the cn (Common Name) value, such as PF",

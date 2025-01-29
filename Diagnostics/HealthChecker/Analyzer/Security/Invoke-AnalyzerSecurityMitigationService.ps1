@@ -2,7 +2,8 @@
 # Licensed under the MIT License.
 
 . $PSScriptRoot\..\Add-AnalyzedResultInformation.ps1
-Function Invoke-AnalyzerSecurityMitigationService {
+. $PSScriptRoot\..\..\..\..\Shared\CompareExchangeBuildLevel.ps1
+function Invoke-AnalyzerSecurityMitigationService {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
@@ -18,95 +19,136 @@ Function Invoke-AnalyzerSecurityMitigationService {
     Write-Verbose "Calling: $($MyInvocation.MyCommand)"
     $exchangeInformation = $HealthServerObject.ExchangeInformation
     $exchangeCU = $exchangeInformation.BuildInformation.CU
-    $mitigationService = $exchangeInformation.ExchangeEmergencyMitigationService
+    $getExchangeServer = $exchangeInformation.GetExchangeServer
+    $mitigationEnabledAtOrg = $HealthServerObject.OrganizationInformation.GetOrganizationConfig.MitigationsEnabled
+    $mitigationEnabledAtServer = $getExchangeServer.MitigationsEnabled
+    $baseParams = @{
+        AnalyzedInformation = $AnalyzeResults
+        DisplayGroupingKey  = $DisplayGroupingKey
+    }
     #Description: Check for Exchange Emergency Mitigation Service (EEMS)
     #Introduced in: Exchange 2016 CU22, Exchange 2019 CU11
-    if (((($exchangeInformation.BuildInformation.MajorVersion -eq [HealthChecker.ExchangeMajorVersion]::Exchange2016) -and
-                ($exchangeCU -ge [HealthChecker.ExchangeCULevel]::CU22)) -or
-            (($exchangeInformation.BuildInformation.MajorVersion -eq [HealthChecker.ExchangeMajorVersion]::Exchange2019) -and
-                ($exchangeCU -ge [HealthChecker.ExchangeCULevel]::CU11))) -and
-        $exchangeInformation.BuildInformation.ServerRole -ne [HealthChecker.ExchangeServerRole]::Edge) {
+    if (((Test-ExchangeBuildGreaterOrEqualThanBuild -CurrentExchangeBuild $exchangeInformation.BuildInformation.VersionInformation -Version "Exchange2016" -CU "CU22") -or
+        (Test-ExchangeBuildGreaterOrEqualThanBuild -CurrentExchangeBuild $exchangeInformation.BuildInformation.VersionInformation -Version "Exchange2019" -CU "CU11")) -and
+        $exchangeInformation.GetExchangeServer.IsEdgeServer -eq $false) {
 
-        if (-not([String]::IsNullOrEmpty($mitigationService.MitigationServiceOrgState))) {
-            if (($mitigationService.MitigationServiceOrgState) -and
-                ($mitigationService.MitigationServiceSrvState)) {
+        if (-not([String]::IsNullOrEmpty($mitigationEnabledAtOrg))) {
+            if (($mitigationEnabledAtOrg) -and
+                ($mitigationEnabledAtServer)) {
                 $eemsWriteType = "Green"
-                $eemsOveralState = "Enabled"
-            } elseif (($mitigationService.MitigationServiceOrgState -eq $false) -and
-                ($mitigationService.MitigationServiceSrvState)) {
+                $eemsOverallState = "Enabled"
+            } elseif (($mitigationEnabledAtOrg -eq $false) -and
+                ($mitigationEnabledAtServer)) {
                 $eemsWriteType = "Yellow"
-                $eemsOveralState = "Disabled on org level"
-            } elseif (($mitigationService.MitigationServiceSrvState -eq $false) -and
-                ($mitigationService.MitigationServiceOrgState)) {
+                $eemsOverallState = "Disabled on org level"
+            } elseif (($mitigationEnabledAtServer -eq $false) -and
+                ($mitigationEnabledAtOrg)) {
                 $eemsWriteType = "Yellow"
-                $eemsOveralState = "Disabled on server level"
+                $eemsOverallState = "Disabled on server level"
             } else {
                 $eemsWriteType = "Yellow"
-                $eemsOveralState = "Disabled"
+                $eemsOverallState = "Disabled"
             }
 
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Exchange Emergency Mitigation Service" -Details $eemsOveralState `
-                -DisplayGroupingKey $DisplayGroupingKey `
-                -DisplayWriteType $eemsWriteType
+            $params = $baseParams + @{
+                Name             = "Exchange Emergency Mitigation Service"
+                Details          = $eemsOverallState
+                DisplayWriteType = $eemsWriteType
+            }
+            Add-AnalyzedResultInformation @params
+
+            if ($eemsWriteType -ne "Green") {
+                $params = $baseParams + @{
+                    Details                = "More Information: https://aka.ms/HC-EEMS"
+                    DisplayWriteType       = $eemsWriteType
+                    DisplayCustomTabNumber = 2
+                    AddHtmlDetailRow       = $false
+                }
+                Add-AnalyzedResultInformation @params
+            }
 
             $eemsWinSrvWriteType = "Yellow"
-            if (-not([String]::IsNullOrEmpty($mitigationService.MitigationWinServiceState))) {
-                if ($mitigationService.MitigationWinServiceState -eq "Running") {
+            $details = "Unknown"
+            $service = $exchangeInformation.DependentServices.Monitor |
+                Where-Object { $_.Name -eq "MSExchangeMitigation" }
+
+            if ($null -ne $service) {
+                if ($service.Status -eq "Running" -and $service.StartType -eq "Automatic") {
+                    $details = "Running"
                     $eemsWinSrvWriteType = "Grey"
+                } else {
+                    $details = "Investigate"
                 }
-                $details = $mitigationService.MitigationWinServiceState
-            } else {
-                $details = "Unknown"
             }
 
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Windows service" -Details $details `
-                -DisplayGroupingKey $DisplayGroupingKey `
-                -DisplayCustomTabNumber 2 `
-                -DisplayWriteType $eemsWinSrvWriteType
+            $params = $baseParams + @{
+                Name                   = "Windows service"
+                Details                = $details
+                DisplayWriteType       = $eemsWinSrvWriteType
+                DisplayCustomTabNumber = 2
+            }
+            Add-AnalyzedResultInformation @params
 
-            if ($mitigationService.MitigationServiceEndpoint -eq 200) {
+            if ($exchangeInformation.ExchangeEmergencyMitigationServiceResult.StatusCode -eq 200) {
                 $eemsPatternServiceWriteType = "Grey"
-                $eemsPatternServiceStatus = ("{0} - Reachable" -f $mitigationService.MitigationServiceEndpoint)
+                $eemsPatternServiceStatus = ("200 - Reachable")
             } else {
                 $eemsPatternServiceWriteType = "Yellow"
                 $eemsPatternServiceStatus = "Unreachable`r`n`t`tMore information: https://aka.ms/HelpConnectivityEEMS"
             }
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Pattern service" -Details $eemsPatternServiceStatus `
-                -DisplayGroupingKey $DisplayGroupingKey `
-                -DisplayCustomTabNumber 2 `
-                -DisplayWriteType $eemsPatternServiceWriteType
+            $params = $baseParams + @{
+                Name                   = "Pattern service"
+                Details                = $eemsPatternServiceStatus
+                DisplayWriteType       = $eemsPatternServiceWriteType
+                DisplayCustomTabNumber = 2
+            }
+            Add-AnalyzedResultInformation @params
 
-            if (-not([String]::IsNullOrEmpty($mitigationService.MitigationsApplied))) {
-                foreach ($mitigationApplied in $mitigationService.MitigationsApplied) {
-                    $AnalyzeResults | Add-AnalyzedResultInformation -Name "Mitigation applied" -Details $mitigationApplied `
-                        -DisplayGroupingKey $DisplayGroupingKey `
-                        -DisplayCustomTabNumber 2
+            if (-not([String]::IsNullOrEmpty($getExchangeServer.MitigationsApplied))) {
+                foreach ($mitigationApplied in $getExchangeServer.MitigationsApplied) {
+                    $params = $baseParams + @{
+                        Name                   = "Mitigation applied"
+                        Details                = $mitigationApplied
+                        DisplayCustomTabNumber = 2
+                    }
+                    Add-AnalyzedResultInformation @params
                 }
 
-                $AnalyzeResults | Add-AnalyzedResultInformation -Details ("Run: 'Get-Mitigations.ps1' from: '{0}' to learn more." -f $exscripts) `
-                    -DisplayGroupingKey $DisplayGroupingKey `
-                    -DisplayCustomTabNumber 2
+                $params = $baseParams + @{
+                    Details                = "Run: 'Get-Mitigations.ps1' from: '$ExScripts' to learn more."
+                    DisplayCustomTabNumber = 2
+                }
+                Add-AnalyzedResultInformation @params
             }
 
-            if (-not([String]::IsNullOrEmpty($mitigationService.MitigationsBlocked))) {
-                foreach ($mitigationBlocked in $mitigationService.MitigationsBlocked) {
-                    $AnalyzeResults | Add-AnalyzedResultInformation -Name "Mitigation blocked" -Details $mitigationBlocked `
-                        -DisplayGroupingKey $DisplayGroupingKey `
-                        -DisplayCustomTabNumber 2 `
-                        -DisplayWriteType "Yellow"
+            if (-not([String]::IsNullOrEmpty($getExchangeServer.MitigationsBlocked))) {
+                foreach ($mitigationBlocked in $getExchangeServer.MitigationsBlocked) {
+                    $params = $baseParams + @{
+                        Name                   = "Mitigation blocked"
+                        Details                = $mitigationBlocked
+                        DisplayWriteType       = "Yellow"
+                        DisplayCustomTabNumber = 2
+                    }
+                    Add-AnalyzedResultInformation @params
                 }
             }
 
-            if (-not([String]::IsNullOrEmpty($mitigationService.DataCollectionEnabled))) {
-                $AnalyzeResults | Add-AnalyzedResultInformation -Name "Telemetry enabled" -Details $mitigationService.DataCollectionEnabled `
-                    -DisplayGroupingKey $DisplayGroupingKey `
-                    -DisplayCustomTabNumber 2
+            if (-not([String]::IsNullOrEmpty($getExchangeServer.DataCollectionEnabled))) {
+                $params = $baseParams + @{
+                    Name                   = "Telemetry enabled"
+                    Details                = $getExchangeServer.DataCollectionEnabled
+                    DisplayCustomTabNumber = 2
+                }
+                Add-AnalyzedResultInformation @params
             }
         } else {
             Write-Verbose "Unable to validate Exchange Emergency Mitigation Service state"
-            $AnalyzeResults | Add-AnalyzedResultInformation -Name "Exchange Emergency Mitigation Service" -Details "Failed to query config" `
-                -DisplayGroupingKey $DisplayGroupingKey `
-                -DisplayWriteType "Red"
+            $params = $baseParams + @{
+                Name             = "Exchange Emergency Mitigation Service"
+                Details          = "Failed to query config"
+                DisplayWriteType = "Red"
+            }
+            Add-AnalyzedResultInformation @params
         }
     } else {
         Write-Verbose "Exchange Emergency Mitigation Service feature not available because we are on: $($exchangeInformation.BuildInformation.MajorVersion) $exchangeCU or on Edge Transport Server"

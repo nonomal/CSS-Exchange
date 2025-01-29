@@ -1,17 +1,30 @@
 ﻿# Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
-[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '', Justification = '$filesFailed is being used.')]
 [CmdletBinding()]
 param(
     [Switch]
-    $Save
+    $Save,
+
+    [string]
+    $Branch
 )
 
 #Requires -Version 7
 
-. $PSScriptRoot\Load-Module.ps1
+Set-StrictMode -Version Latest
 
-if (-not (Load-Module -Name PSScriptAnalyzer -MinimumVersion "1.20")) {
+. $PSScriptRoot\Load-Module.ps1
+. $PSScriptRoot\CodeFormatterChecks\CheckContainsCurlyQuotes.ps1
+. $PSScriptRoot\CodeFormatterChecks\CheckFileHasNewlineAtEndOfFile.ps1
+. $PSScriptRoot\CodeFormatterChecks\CheckMarkdownFileHasNoBOM.ps1
+. $PSScriptRoot\CodeFormatterChecks\CheckMultipleEmptyLines.ps1
+. $PSScriptRoot\CodeFormatterChecks\CheckScriptFileHasBOM.ps1
+. $PSScriptRoot\CodeFormatterChecks\CheckScriptFileHasComplianceHeader.ps1
+. $PSScriptRoot\CodeFormatterChecks\CheckScriptFormat.ps1
+. $PSScriptRoot\CodeFormatterChecks\CheckTokenTypeCasing.ps1
+. $PSScriptRoot\HelpFunctions\Get-CommitFilesOnBranch.ps1
+
+if (-not (Load-Module -Name PSScriptAnalyzer -MinimumVersion "1.23")) {
     throw "PSScriptAnalyzer module could not be loaded"
 }
 
@@ -21,117 +34,78 @@ if (-not (Load-Module -Name EncodingAnalyzer)) {
 
 $repoRoot = Get-Item "$PSScriptRoot\.."
 
-$scriptFiles = Get-ChildItem -Path $repoRoot -Directory | Where-Object {
-    $_.Name -ne "dist" } | ForEach-Object { Get-ChildItem -Path $_.FullName -Include "*.ps1", "*.psm1" -Recurse } | ForEach-Object { $_.FullName }
-$filesFailed = $false
+$optimizeCodeFormatter = [string]::IsNullOrEmpty($Branch) -eq $false
+# Get only the files that are changed in this PR
+if ($optimizeCodeFormatter) {
 
-# MD files must NOT have a BOM
-Get-ChildItem -Path $repoRoot -Include *.md -Recurse | ForEach-Object {
-    $encoding = Get-PsOneEncoding $_
-    if ($encoding.BOM) {
-        Write-Warning "MD file has BOM: $($_.FullName)"
-        if ($Save) {
-            try {
-                $content = Get-Content $_
-                Set-Content -Path $_.FullName -Value $content -Encoding utf8NoBOM -Force
-                Write-Warning "Saved $($_.FullName) without BOM."
-            } catch {
-                $filesFailed = $true
-                throw
-            }
-        } else {
-            $filesFailed = $true
+    $filesFullPath = Get-CommitFilesOnBranch -Branch $Branch
+
+    # Only optimize CodeFormatter IF any CodeFormatter related files were not modified or PSScriptAnalyzerSettings.psd1
+    $optimizeCodeFormatter = $null -eq ($filesFullPath | Where-Object { $_ -like "*.build\CodeFormatter*" -or $_ -like "*\PSScriptAnalyzerSettings.psd1" })
+    Write-Host "Optimize Code: $optimizeCodeFormatter"
+}
+
+if ($optimizeCodeFormatter) {
+    $filesToCheck = $filesFullPath | Get-ChildItem -Include "*.ps1", "*.psm1", "*.md"
+
+    if ($null -eq $filesToCheck) {
+        Write-Host "No scripts or md files were modified. Skipping over check."
+        return
+    }
+    Write-Host "Files that we are looking at for code formatting:"
+    $filesToCheck.FullName | Write-Host
+} else {
+    $filesToCheck = Get-ChildItem -Path $repoRoot -Directory | Where-Object {
+        $_.Name -ne "dist" } | ForEach-Object {
+        Get-ChildItem -Path $_.FullName -Include "*.ps1", "*.psm1", "*.md" -Recurse
+    }
+}
+
+$errorCount = 0
+
+foreach ($fileInfo in $filesToCheck) {
+    $errorCount += (CheckFileHasNewlineAtEndOfFile $fileInfo $Save) ? 1 : 0
+    $errorCount += (CheckMarkdownFileHasNoBOM $fileInfo $Save) ? 1 : 0
+    $errorCount += (CheckScriptFileHasBOM $fileInfo $Save) ? 1 : 0
+    $errorCount += (CheckScriptFileHasComplianceHeader $fileInfo $Save) ? 1 : 0
+    $errorCount += (CheckTokenTypeCasing $fileInfo $Save "Keyword") ? 1 : 0
+    $errorCount += (CheckTokenTypeCasing $fileInfo $Save "Operator") ? 1 : 0
+    $errorCount += (CheckMultipleEmptyLines $fileInfo $Save) ?  1 : 0
+    $errorCount += (CheckContainsCurlyQuotes $fileInfo $Save) ? 1 : 0
+
+    # This one is tricky. It returns $true or $false like the others, but in the case
+    # of an error, we also want to get the diff output. Piping to Out-Host from within
+    # the function loses the colorization, as does redirection. I can't find any way
+    # for the function to output the diff while preserving the color. So we unfortunately
+    # have to handle the output here.
+    $results = @(CheckScriptFormat $fileInfo $Save)
+    if ($results.Length -gt 0 -and $results[0] -eq $true) {
+        $errorCount++
+        if ($results.Length -gt 2) {
+            git -c color.status=always diff ($($results[1]) | git hash-object -w --stdin) ($($results[2]) | git hash-object -w --stdin)
         }
     }
 }
 
-foreach ($file in $scriptFiles) {
-    # PS1 files must have a BOM
-    $encoding = Get-PsOneEncoding $file
-    if (-not $encoding.BOM) {
-        Write-Warning "File has no BOM: $file"
-        if ($Save) {
-            try {
-                $content = Get-Content $file
-                Set-Content -Path $file -Value $content -Encoding utf8BOM -Force
-                Write-Warning "Saved $file with BOM."
-            } catch {
-                $filesFailed = $true
-                throw
-            }
-        } else {
-            $filesFailed = $true
-        }
-    }
+$maxRetries = 5
 
-    #Check for compliance
-    $scriptContent = New-Object 'System.Collections.Generic.List[string]'
-    $scriptContent.AddRange([IO.File]::ReadAllLines($file))
-
-    if (-not ($scriptContent[0].Contains("# Copyright (c) Microsoft Corporation.")) -or
-        -not ($scriptContent[1].Contains("# Licensed under the MIT License."))) {
-
-        Write-Warning "File doesn't have header compliance set: $file"
-        if ($Save) {
-            try {
-                $scriptContent.Insert(0, "")
-                $scriptContent.Insert(0, "# Licensed under the MIT License.")
-                $scriptContent.Insert(0, "# Copyright (c) Microsoft Corporation.")
-                Set-Content -Path $file -Value $scriptContent -Encoding utf8BOM
-            } catch {
-                $filesFailed = $true
-                throw
-            }
-        } else {
-            $filesFailed = $true
-        }
-    }
-
-    $reloadFile = $false
-    $before = Get-Content $file -Raw
-    $after = Invoke-Formatter -ScriptDefinition $before -Settings $repoRoot\PSScriptAnalyzerSettings.psd1
-
-    if ($before -ne $after) {
-        Write-Warning ("{0}:" -f $file)
-        Write-Warning ("Failed to follow the same format defined in the repro")
-        if ($Save) {
-            try {
-                Set-Content -Path $file -Value $after -Encoding utf8NoBOM
-                Write-Information "Saved $file with formatting corrections."
-                $reloadFile = $true
-            } catch {
-                $filesFailed = $true
-                Write-Warning "Failed to save $file with formatting corrections."
-            }
-        } else {
-            $filesFailed = $true
-            git diff ($($before) | git hash-object -w --stdin) ($($after) | git hash-object -w --stdin)
-        }
-    }
-
-    if ($reloadFile) {
-        $before = Get-Content -Path $file -Raw
-    }
-
-    if (-not ([string]::IsNullOrWhiteSpace($before[-1]))) {
-        Write-Warning $file
-        Write-Warning "Failed to have a whitespace at the end of the file"
-        $filesFailed = $true
-    }
-
-    $maxRetries = 5
-
+foreach ($fileInfo in $filesToCheck) {
     for ($i = 0; $i -lt $maxRetries; $i++) {
-
         try {
-            $analyzerResults = Invoke-ScriptAnalyzer -Path $file -Settings $repoRoot\PSScriptAnalyzerSettings.psd1 -ErrorAction Stop
+            $params = @{
+                Path                = ($fileInfo.FullName)
+                Settings            = "$repoRoot\PSScriptAnalyzerSettings.psd1"
+                CustomRulePath      = "$repoRoot\.build\CodeFormatterChecks\CustomRules.psm1"
+                IncludeDefaultRules = $true
+            }
+            $analyzerResults = Invoke-ScriptAnalyzer @params
             if ($null -ne $analyzerResults) {
-                $filesFailed = $true
+                $errorCount++
                 $analyzerResults | Format-Table -AutoSize
             }
             break
         } catch {
-            Write-Warning "Invoke-ScriptAnalyer failed. Error:"
+            Write-Warning "Invoke-ScriptAnalyzer failed on $($fileInfo.FullName). Error:"
             $_.Exception | Format-List | Out-Host
             Write-Warning "Retrying in 5 seconds."
             Start-Sleep -Seconds 5
@@ -139,10 +113,10 @@ foreach ($file in $scriptFiles) {
     }
 
     if ($i -eq $maxRetries) {
-        $filesFailed = $true
+        throw "Invoke-ScriptAnalyzer failed $maxRetries times. Giving up."
     }
 }
 
-if ($filesFailed) {
-    throw "Failed to match coding formatting requirements"
+if ($errorCount -gt 0) {
+    throw "Failed to match formatting requirements"
 }

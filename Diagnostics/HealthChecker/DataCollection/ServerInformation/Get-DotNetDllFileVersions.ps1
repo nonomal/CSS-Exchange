@@ -3,17 +3,17 @@
 
 . $PSScriptRoot\..\..\..\..\Shared\Get-RemoteRegistryValue.ps1
 . $PSScriptRoot\..\..\..\..\Shared\Invoke-ScriptBlockHandler.ps1
-Function Get-DotNetDllFileVersions {
+function Get-DotNetDllFileVersions {
     [CmdletBinding()]
     [OutputType("System.Collections.Hashtable")]
     param(
         [string]$ComputerName,
         [array]$FileNames,
-        [scriptblock]$CatchActionFunction
+        [ScriptBlock]$CatchActionFunction
     )
 
     begin {
-        Function Invoke-ScriptBlockGetItem {
+        function Invoke-ScriptBlockGetItem {
             param(
                 [string]$FilePath
             )

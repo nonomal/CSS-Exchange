@@ -3,15 +3,15 @@
 
 . $PSScriptRoot\Invoke-ScriptBlockHandler.ps1
 
-Function Get-ServerRebootPending {
+function Get-ServerRebootPending {
     [CmdletBinding()]
     param(
         [string]$ServerName = $env:COMPUTERNAME,
-        [scriptblock]$CatchActionFunction
+        [ScriptBlock]$CatchActionFunction
     )
     begin {
 
-        Function Get-PendingFileReboot {
+        function Get-PendingFileReboot {
             try {
                 if ((Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\" -Name PendingFileRenameOperations -ErrorAction Stop)) {
                     return $true
@@ -22,7 +22,19 @@ Function Get-ServerRebootPending {
             }
         }
 
-        Function Get-PendingCCMReboot {
+        function Get-UpdateExeVolatile {
+            try {
+                $updateExeVolatileProps = Get-ItemProperty -Path "HKLM:\Software\Microsoft\Updates\UpdateExeVolatile\" -ErrorAction Stop
+                if ($null -ne $updateExeVolatileProps -and $null -ne $updateExeVolatileProps.Flags) {
+                    return $true
+                }
+                return $false
+            } catch {
+                throw
+            }
+        }
+
+        function Get-PendingCCMReboot {
             try {
                 return (Invoke-CimMethod -Namespace 'Root\ccm\clientSDK' -ClassName 'CCM_ClientUtilities' -Name 'DetermineIfRebootPending' -ErrorAction Stop)
             } catch {
@@ -30,7 +42,7 @@ Function Get-ServerRebootPending {
             }
         }
 
-        Function Get-PathTestingReboot {
+        function Get-PathTestingReboot {
             param(
                 [string]$TestingPath
             )
@@ -64,8 +76,12 @@ Function Get-ServerRebootPending {
             -ArgumentList "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired" `
             -CatchActionFunction $CatchActionFunction
 
+        $updateExeVolatileValue = Invoke-ScriptBlockHandler -ComputerName $ServerName -ScriptBlock ${Function:Get-UpdateExeVolatile} `
+            -ScriptBlockDescription "UpdateExeVolatile Reboot Pending" `
+            -CatchActionFunction $CatchActionFunction
+
         $ccmRebootPending = $ccmReboot -and ($ccmReboot.RebootPending -or $ccmReboot.IsHardRebootPending)
-        $pendingReboot = $ccmRebootPending -or $pendingFileRenameOperationValue -or $componentBasedServicingPendingRebootValue -or $autoUpdatePendingRebootValue
+        $pendingReboot = $ccmRebootPending -or $pendingFileRenameOperationValue -or $componentBasedServicingPendingRebootValue -or $autoUpdatePendingRebootValue -or $updateExeVolatileValue
 
         if ($ccmRebootPending) {
             Write-Verbose "RebootPending in CCM_ClientUtilities"
@@ -86,12 +102,18 @@ Function Get-ServerRebootPending {
             Write-Verbose "RebootPending at HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired"
             $pendingRebootLocations.Add("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired")
         }
+
+        if ($updateExeVolatileValue) {
+            Write-Verbose "RebootPending at HKLM:\Software\Microsoft\Updates\UpdateExeVolatile\Flags"
+            $pendingRebootLocations.Add("HKLM:\Software\Microsoft\Updates\UpdateExeVolatile\Flags")
+        }
     }
     end {
         return [PSCustomObject]@{
             PendingFileRenameOperations          = $pendingFileRenameOperationValue
             ComponentBasedServicingPendingReboot = $componentBasedServicingPendingRebootValue
             AutoUpdatePendingReboot              = $autoUpdatePendingRebootValue
+            UpdateExeVolatileValue               = $updateExeVolatileValue
             CcmRebootPending                     = $ccmRebootPending
             PendingReboot                        = $pendingReboot
             PendingRebootLocations               = $pendingRebootLocations

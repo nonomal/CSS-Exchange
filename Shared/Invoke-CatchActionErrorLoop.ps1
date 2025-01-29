@@ -1,13 +1,13 @@
 ﻿# Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-Function Invoke-CatchActionErrorLoop {
+function Invoke-CatchActionErrorLoop {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true, Position = 0)]
         [int]$CurrentErrors,
         [Parameter(Mandatory = $false, Position = 1)]
-        [scriptblock]$CatchActionFunction
+        [ScriptBlock]$CatchActionFunction
     )
     process {
         if ($null -ne $CatchActionFunction -and

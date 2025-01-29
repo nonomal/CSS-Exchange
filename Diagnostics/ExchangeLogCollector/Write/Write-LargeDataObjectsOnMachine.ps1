@@ -1,12 +1,21 @@
 ﻿# Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+. $PSScriptRoot\..\ExchangeServerInfo\Get-DAGInformation.ps1
+. $PSScriptRoot\..\ExchangeServerInfo\Get-ExchangeBasicServerObject.ps1
+. $PSScriptRoot\..\Helpers\Start-JobManager.ps1
+. $PSScriptRoot\..\RemoteScriptBlock\Get-ExchangeInstallDirectory.ps1
+. $PSScriptRoot\..\RemoteScriptBlock\IO\Compress-Folder.ps1
+. $PSScriptRoot\..\RemoteScriptBlock\IO\Save-DataToFile.ps1
+. $PSScriptRoot\..\..\..\Shared\ErrorMonitorFunctions.ps1
+. $PSScriptRoot\..\..\..\Shared\ScriptBlock\Get-DefaultSBInjectionContext.ps1
+. $PSScriptRoot\..\..\..\Shared\ScriptBlock\RemoteSBLoggingFunctions.ps1
 #This function job is to write out the Data that is too large to pass into the main script block
 #This is for mostly Exchange Related objects.
 #To handle this, we export the data locally and copy the data over the correct server.
-Function Write-LargeDataObjectsOnMachine {
+function Write-LargeDataObjectsOnMachine {
 
-    Write-ScriptDebug("Function Enter Write-LargeDataObjectsOnMachine")
+    Write-Verbose("Function Enter Write-LargeDataObjectsOnMachine")
 
     [array]$serverNames = $Script:ArgumentList.ServerObjects |
         ForEach-Object {
@@ -14,13 +23,17 @@ Function Write-LargeDataObjectsOnMachine {
         }
 
     #Collect the Exchange Data that resides on their own machine.
-    Function Invoke-ExchangeResideDataCollectionWrite {
+    function Invoke-ExchangeResideDataCollectionWrite {
         param(
-            [Parameter(Mandatory = $true)][object]$PassedInfo
+            [Parameter(Mandatory = $true, Position = 1)]
+            [string]$SaveToLocation,
+
+            [Parameter(Mandatory = $true, Position = 2)]
+            [string]$InstallDirectory
         )
 
-        $location = $PassedInfo.SaveToLocation
-        $exchBin = "{0}\Bin" -f $PassedInfo.InstallDirectory
+        $location = $SaveToLocation
+        $exchBin = "{0}\Bin" -f $InstallDirectory
         $configFiles = Get-ChildItem $exchBin | Where-Object { $_.Name -like "*.config" }
         $copyTo = "{0}\Config" -f $location
         $configFiles | ForEach-Object { Copy-Item $_.VersionInfo.FileName $copyTo }
@@ -28,13 +41,13 @@ Function Write-LargeDataObjectsOnMachine {
         $copyServerComponentStatesRegistryTo = "{0}\regServerComponentStates.TXT" -f $location
         reg query HKLM\SOFTWARE\Microsoft\ExchangeServer\v15\ServerComponentStates /s > $copyServerComponentStatesRegistryTo
 
-        Get-Command exsetup | ForEach-Object { $_.FileVersionInfo } > ("{0}\{1}_GCM.txt" -f $location, $env:COMPUTERNAME)
+        Get-Command ExSetup | ForEach-Object { $_.FileVersionInfo } > ("{0}\{1}_GCM.txt" -f $location, $env:COMPUTERNAME)
 
         #Exchange Web App Pools
         $windir = $env:windir
-        $appCmd = "{0}\system32\inetsrv\appcmd.exe" -f $windir
+        $appCmd = "{0}\system32\inetSrv\appCmd.exe" -f $windir
         if (Test-Path $appCmd) {
-            $appPools = &$appCmd list apppool
+            $appPools = &$appCmd list appPool
             $sites = &$appCmd list sites
 
             $exchangeAppPools = $appPools |
@@ -61,8 +74,8 @@ Function Write-LargeDataObjectsOnMachine {
             $cacheConfigFileListLocation = @()
             $exchangeAppPools |
                 ForEach-Object {
-                    $config = &$appCmd list apppool $_ /text:CLRConfigFile
-                    $allInfo = &$appCmd list apppool $_ /text:*
+                    $config = &$appCmd list appPool $_ /text:CLRConfigFile
+                    $allInfo = &$appCmd list appPool $_ /text:*
 
                     if (![string]::IsNullOrEmpty($config) -and
                         (Test-Path $config) -and
@@ -125,6 +138,62 @@ Function Write-LargeDataObjectsOnMachine {
             if (Test-Path $machineConfig) {
                 Copy-Item $machineConfig -Destination ("{0}\{1}_machine.config" -f $webAppPoolsSaveRoot, $env:COMPUTERNAME)
             }
+
+            $siteConfigs = @{}
+            # always try to get the hardcoded default
+            $siteConfigs.Add("applicationHost.config", "$($env:WINDIR)\System32\inetSrv\config\applicationHost.config")
+
+            try {
+                # default location normally your applicationHost.config
+                try {
+                    $defaultLocation = Get-WebConfigFile
+
+                    if (-not $siteConfigs.ContainsKey($defaultLocation.Name)) {
+                        $siteConfigs.Add($defaultLocation.Name, $defaultLocation.FullName)
+                    }
+                } catch {
+                    Write-Verbose "Failed to get default web config file path. $_"
+                }
+
+                $sitesContent.Keys |
+                    ForEach-Object {
+                        try {
+                            $name = $_
+                            $siteWebFileConfig = Get-WebConfigFile "IIS:\Sites\$($name)"
+
+                            $keyName = if ($siteWebFileConfig.Name -eq "web.config") { "$name`_web.config" } else { $siteWebFileConfig.Name }
+
+                            if (-not $siteConfigs.ContainsKey($keyName)) {
+                                $siteConfigs.Add($keyName, $siteWebFileConfig.FullName)
+                            }
+                        } catch {
+                            Write-Verbose "Failed to get web config for $name. $_"
+                        }
+                    }
+            } catch {
+                Write-Verbose "Failed to get the web config file for the sites. $_"
+                # remote context, cant call catch actions
+            } finally {
+                if ($null -ne $siteConfigs -and
+                    $siteConfigs.Count -gt 0) {
+                    $siteConfigs.Keys |
+                        ForEach-Object {
+                            if ((Test-Path $siteConfigs[$_])) {
+                                Copy-Item $siteConfigs[$_] -Destination ("{0}\{1}_{2}" -f $webAppPoolsSaveRoot, $env:COMPUTERNAME, $_)
+                            }
+                        }
+                }
+            }
+
+            # list the app pools ids
+            $ids = & $appCmd list wp
+            $fileName = ("{0}\{1}_Web_App_IDs.txt" -f $webAppPoolsSaveRoot, $env:COMPUTERNAME)
+
+            if ($null -ne $ids) {
+                $ids > $fileName
+            } else {
+                "No Data" > $fileName
+            }
         }
     }
 
@@ -132,7 +201,7 @@ Function Write-LargeDataObjectsOnMachine {
     #Exchange objects can be rather large preventing them to be passed within an Invoke-Command -ArgumentList
     #In order to get around this and to avoid going through a loop of doing an Invoke-Command per server per object,
     #Write the data out locally, copy that directory over to the remote location.
-    Function Write-ExchangeObjectDataLocal {
+    function Write-ExchangeObjectDataLocal {
         param(
             [object]$ServerData,
             [string]$Location
@@ -161,7 +230,7 @@ Function Write-LargeDataObjectsOnMachine {
         }
     }
 
-    Function Write-DatabaseAvailabilityGroupDataLocal {
+    function Write-DatabaseAvailabilityGroupDataLocal {
         param(
             [object]$DAGWriteInfo
         )
@@ -170,7 +239,7 @@ Function Write-LargeDataObjectsOnMachine {
         $rootSaveToLocation = $DAGWriteInfo.RootSaveToLocation
         $mailboxDatabaseSaveToLocation = "{0}\MailboxDatabase\" -f $rootSaveToLocation
         $copyStatusSaveToLocation = "{0}\MailboxDatabaseCopyStatus\" -f $rootSaveToLocation
-        New-Folder -NewFolders @($mailboxDatabaseSaveToLocation, $copyStatusSaveToLocation)
+        New-Item -ItemType Directory -Path @($mailboxDatabaseSaveToLocation, $copyStatusSaveToLocation) -Force | Out-Null
         Save-DataToFile -DataIn $DAGWriteInfo.DAGInfo -SaveToLocation ("{0}{1}_DatabaseAvailabilityGroup" -f $rootSaveToLocation, $dagName)
         Save-DataToFile -DataIn $DAGWriteInfo.DAGNetworkInfo -SaveToLocation ("{0}{1}_DatabaseAvailabilityGroupNetwork" -f $rootSaveToLocation, $dagName)
         Save-DataToFile -DataIn $DAGWriteInfo.MailboxDatabaseCopyStatusServer -SaveToLocation ("{0}{1}_MailboxDatabaseCopyStatus" -f $copyStatusSaveToLocation, $serverName)
@@ -218,12 +287,12 @@ Function Write-LargeDataObjectsOnMachine {
         $dagWriteInformation |
             ForEach-Object {
                 $location = "{0}{1}" -f $Script:RootFilePath, $_.ServerName
-                Write-ScriptDebug("Location of the data should be at: $location")
+                Write-Verbose("Location of the data should be at: $location")
                 $remoteLocation = "\\{0}\{1}" -f $_.ServerName, $location.Replace(":", "$")
-                Write-ScriptDebug("Remote Copy Location: $remoteLocation")
+                Write-Verbose("Remote Copy Location: $remoteLocation")
                 $rootTempLocation = "{0}{1}\{2}_Exchange_DAG_Information\" -f $localServerTempLocation, $_.ServerName, $_.DAGInfo.Name
-                Write-ScriptDebug("Local Root Temp Location: $rootTempLocation")
-                New-Folder -NewFolders $rootTempLocation
+                Write-Verbose("Local Root Temp Location: $rootTempLocation")
+                New-Item -ItemType Directory -Path $rootTempLocation -Force | Out-Null
                 $_ | Add-Member -MemberType NoteProperty -Name RootSaveToLocation -Value $rootTempLocation
                 Write-DatabaseAvailabilityGroupDataLocal -DAGWriteInfo $_
 
@@ -231,8 +300,8 @@ Function Write-LargeDataObjectsOnMachine {
                 try {
                     Copy-Item $zipCopyLocation $remoteLocation
                 } catch {
-                    Write-ScriptDebug("Failed to copy data to $remoteLocation. This is likely due to file sharing permissions.")
-                    Invoke-CatchBlockActions
+                    Write-Verbose("Failed to copy data to $remoteLocation. This is likely due to file sharing permissions.")
+                    Invoke-CatchActions
                 }
             }
         #Remove the temp data location
@@ -253,17 +322,17 @@ Function Write-LargeDataObjectsOnMachine {
             ForEach-Object {
                 $failed = $false
                 $reportPath = "{0}\{1}_FailoverMetrics" -f $localServerTempLocation, $_.Name
-                New-Folder -NewFolders $reportPath
+                New-Item -ItemType Directory -Path $reportPath -Force | Out-Null
 
                 try {
-                    Write-ScriptHost("Attempting to run CollectOverMetrics.ps1 against $($_.Name)")
+                    Write-Host "Attempting to run CollectOverMetrics.ps1 against $($_.Name)"
                     &"$Script:localExInstall\Scripts\CollectOverMetrics.ps1" -DatabaseAvailabilityGroup $_.Name `
                         -IncludeExtendedEvents `
                         -GenerateHtmlReport `
                         -ReportPath $reportPath
                 } catch {
-                    Write-ScriptDebug("Failed to collect failover metrics")
-                    Invoke-CatchBlockActions
+                    Write-Verbose("Failed to collect failover metrics")
+                    Invoke-CatchActions
                     $failed = $true
                 }
 
@@ -272,30 +341,30 @@ Function Write-LargeDataObjectsOnMachine {
                     $_.Group |
                         ForEach-Object {
                             $location = "{0}{1}" -f $Script:RootFilePath, $_.ServerName
-                            Write-ScriptDebug("Location of the data should be at: $location")
+                            Write-Verbose("Location of the data should be at: $location")
                             $remoteLocation = "\\{0}\{1}" -f $_.ServerName, $location.Replace(":", "$")
-                            Write-ScriptDebug("Remote Copy Location: $remoteLocation")
+                            Write-Verbose("Remote Copy Location: $remoteLocation")
 
                             try {
                                 Copy-Item $zipCopyLocation $remoteLocation
                             } catch {
-                                Write-ScriptDebug("Failed to copy data to $remoteLocation. This is likely due to file sharing permissions.")
-                                Invoke-CatchBlockActions
+                                Write-Verbose("Failed to copy data to $remoteLocation. This is likely due to file sharing permissions.")
+                                Invoke-CatchActions
                             }
                         }
                     } else {
-                        Write-ScriptDebug("Not compressing or copying over this folder.")
+                        Write-Verbose("Not compressing or copying over this folder.")
                     }
                 }
 
         Remove-Item $localServerTempLocation -Recurse -Force
     } elseif ($null -eq $dagNameGroup -or
         $dagNameGroup.Count -eq 0) {
-        Write-ScriptDebug("No DAGs were found. Didn't run CollectOverMetrics.ps1")
+        Write-Verbose("No DAGs were found. Didn't run CollectOverMetrics.ps1")
     } elseif ($Script:EdgeRoleDetected) {
-        Write-ScriptHost("Unable to run CollectOverMetrics.ps1 script from an edge server") -ForegroundColor Yellow
+        Write-Host "Unable to run CollectOverMetrics.ps1 script from an edge server" -ForegroundColor Yellow
     } elseif ($CollectFailoverMetrics) {
-        Write-ScriptHost("Unable to run CollectOverMetrics.ps1 script from a remote shell session not on an Exchange Server or Tools box.") -ForegroundColor Yellow
+        Write-Host "Unable to run CollectOverMetrics.ps1 script from a remote shell session not on an Exchange Server or Tools box." -ForegroundColor Yellow
     }
 
     if ($ExchangeServerInformation) {
@@ -341,7 +410,7 @@ Function Write-LargeDataObjectsOnMachine {
 
             <#
             To pass an action to Start-JobManager, need to create objects like this.
-                Where ArgumentList is the arguments for the scriptblock that we are running
+                Where ArgumentList is the arguments for the ScriptBlock that we are running
             [array]
                 [PSCustom]
                     [string]ServerName
@@ -354,15 +423,11 @@ Function Write-LargeDataObjectsOnMachine {
             #>
 
             #Setup all the Script blocks that we are going to use.
-            Write-ScriptDebug("Getting Get-ExchangeInstallDirectory string to create Script Block")
-            $getExchangeInstallDirectoryString = (${Function:Get-ExchangeInstallDirectory}).ToString().Replace("#Function Version", (Get-WritersToAddToScriptBlock))
-            Write-ScriptDebug("Creating Script Block")
-            $getExchangeInstallDirectoryScriptBlock = [scriptblock]::Create($getExchangeInstallDirectoryString)
-
-            Write-ScriptDebug("Getting New-Folder string to create Script Block")
-            $newFolderString = (${Function:New-Folder}).ToString().Replace("#Function Version", (Get-WritersToAddToScriptBlock))
-            Write-ScriptDebug("Creating script block")
-            $newFolderScriptBlock = [scriptblock]::Create($newFolderString)
+            Write-Verbose("Getting Get-ExchangeInstallDirectory string to create Script Block")
+            $getExchangeInstallDirectoryScriptBlock = Get-DefaultSBInjectionContext -PrimaryScriptBlock ${Function:Get-ExchangeInstallDirectory}
+            Write-Verbose("Successfully Created Script Block")
+            Write-Verbose("New-Item create Script Block")
+            $newFolderScriptBlock = { param($path) New-Item -ItemType Directory -Path $path -Force | Out-Null }
 
             $serverArgListExchangeInstallDirectory = @()
             $serverArgListDirectoriesToCreate = @()
@@ -375,30 +440,30 @@ Function Write-LargeDataObjectsOnMachine {
 
                 $serverArgListExchangeInstallDirectory += [PSCustomObject]@{
                     ServerName   = $serverName
-                    ArgumentList = $true
+                    ArgumentList = $null
                 }
 
+                # Use , prior to the array to make sure it doesn't unwrap
                 $serverArgListDirectoriesToCreate += [PSCustomObject]@{
                     ServerName   = $serverName
-                    ArgumentList = [PSCustomObject]@{
-                        NewFolders = (@(
-                                ("{0}{1}\Exchange_Server_Data\Config" -f $Script:RootFilePath, $serverName),
-                                ("{0}{1}\Exchange_Server_Data\WebAppPools" -f $Script:RootFilePath, $serverName)
-                            ))
-                    }
+                    ArgumentList = (, @("$Script:RootFilePath$serverName\Exchange_Server_Data\Config", "$Script:RootFilePath$serverName\Exchange_Server_Data\WebAppPools"))
                 }
             }
 
-            Write-ScriptDebug ("Calling job for Get Exchange Install Directory")
-            $serverInstallDirectories = Start-JobManager -ServersWithArguments $serverArgListExchangeInstallDirectory -ScriptBlock $getExchangeInstallDirectoryScriptBlock `
-                -NeedReturnData $true `
-                -DisplayReceiveJobInCorrectFunction $true `
-                -JobBatchName "Exchange Install Directories for Write-LargeDataObjectsOnMachine"
+            Write-Verbose ("Calling job for Get Exchange Install Directory")
+            $params = @{
+                ServersWithArguments  = $serverArgListExchangeInstallDirectory
+                ScriptBlock           = $getExchangeInstallDirectoryScriptBlock
+                NeedReturnData        = $true
+                JobBatchName          = "Exchange Install Directories for Write-LargeDataObjectsOnMachine"
+                RemotePipelineHandler = ${Function:Invoke-RemotePipelineLoggingLocal}
+            }
+            $serverInstallDirectories = Start-JobManager @params
 
-            Write-ScriptDebug("Calling job for folder creation")
+            Write-Verbose("Calling job for folder creation")
             Start-JobManager -ServersWithArguments $serverArgListDirectoriesToCreate -ScriptBlock $newFolderScriptBlock `
-                -DisplayReceiveJobInCorrectFunction $true `
-                -JobBatchName "Creating folders for Write-LargeDataObjectsOnMachine"
+                -JobBatchName "Creating folders for Write-LargeDataObjectsOnMachine" `
+                -RemotePipelineHandler ${Function:Invoke-RemotePipelineLoggingLocal}
 
             #Now do the rest of the actions
             foreach ($serverData in $exchangeServerData) {
@@ -407,29 +472,26 @@ Function Write-LargeDataObjectsOnMachine {
                 $saveToLocation = "{0}{1}\Exchange_Server_Data" -f $Script:RootFilePath, $serverName
                 $serverArgListExchangeResideData += [PSCustomObject]@{
                     ServerName   = $serverName
-                    ArgumentList = [PSCustomObject]@{
-                        SaveToLocation   = $saveToLocation
-                        InstallDirectory = $serverInstallDirectories[$serverName]
-                    }
+                    ArgumentList = @($saveToLocation, $serverInstallDirectories[$serverName])
                 }
 
                 #Write out the Exchange object data locally as a temp and copy it over to the remote server
                 $location = "{0}{1}\Exchange_Server_Data" -f $Script:RootFilePath, $serverName
-                Write-ScriptDebug("Location of data should be at: {0}" -f $location)
+                Write-Verbose("Location of data should be at: {0}" -f $location)
                 $remoteLocation = "\\{0}\{1}" -f $serverName, $location.Replace(":", "$")
-                Write-ScriptDebug("Remote Copy Location: {0}" -f $remoteLocation)
+                Write-Verbose("Remote Copy Location: {0}" -f $remoteLocation)
                 $rootTempLocation = "{0}{1}" -f $localServerTempLocation, $serverName
-                Write-ScriptDebug("Local Root Temp Location: {0}" -f $rootTempLocation)
+                Write-Verbose("Local Root Temp Location: {0}" -f $rootTempLocation)
                 #Create the temp location and write out the data
-                New-Folder -NewFolders $rootTempLocation
+                New-Item -ItemType Directory -Path $rootTempLocation -Force | Out-Null
                 Write-ExchangeObjectDataLocal -ServerData $serverData -Location $rootTempLocation
                 Get-ChildItem $rootTempLocation |
                     ForEach-Object {
                         try {
                             Copy-Item $_.VersionInfo.FileName $remoteLocation
                         } catch {
-                            Write-ScriptDebug("Failed to copy data to $remoteLocation. This is likely due to file sharing permissions.")
-                            Invoke-CatchBlockActions
+                            Write-Verbose("Failed to copy data to $remoteLocation. This is likely due to file sharing permissions.")
+                            Invoke-CatchActions
                         }
                     }
             }
@@ -437,7 +499,7 @@ Function Write-LargeDataObjectsOnMachine {
             #Remove the temp data location right away
             Remove-Item $localServerTempLocation -Force -Recurse
 
-            Write-ScriptDebug("Calling Invoke-ExchangeResideDataCollectionWrite")
+            Write-Verbose("Calling Invoke-ExchangeResideDataCollectionWrite")
             Start-JobManager -ServersWithArguments $serverArgListExchangeResideData -ScriptBlock ${Function:Invoke-ExchangeResideDataCollectionWrite} `
                 -DisplayReceiveJob $false `
                 -JobBatchName "Write the data for Write-LargeDataObjectsOnMachine"
@@ -448,16 +510,16 @@ Function Write-LargeDataObjectsOnMachine {
             }
             $location = "{0}{1}\Exchange_Server_Data" -f $Script:RootFilePath, $exchangeServerData.ServerName
             [array]$createFolders = @(("{0}\Config" -f $location), ("{0}\WebAppPools" -f $location))
-            New-Folder -NewFolders $createFolders -IncludeDisplayCreate $true
+            New-Item -ItemType Directory -Path $createFolders -Force | Out-Null
             Write-ExchangeObjectDataLocal -Location $location -ServerData $exchangeServerData
 
-            $passInfo = [PSCustomObject]@{
+            $passInfo = @{
                 SaveToLocation   = $location
                 InstallDirectory = $ExInstall
             }
 
-            Write-ScriptDebug("Writing out the Exchange data")
-            Invoke-ExchangeResideDataCollectionWrite -PassedInfo $passInfo
+            Write-Verbose("Writing out the Exchange data")
+            Invoke-ExchangeResideDataCollectionWrite @passInfo
         }
     }
 }

@@ -1,15 +1,10 @@
----
-title: SourceSideValidations.ps1
-parent: PublicFolders
----
-
-## SourceSideValidations.ps1
+# SourceSideValidations
 
 Download the latest release: [SourceSideValidations.ps1](https://github.com/microsoft/CSS-Exchange/releases/latest/download/SourceSideValidations.ps1)
 
 This script performs pre-migration public folder checks for Exchange 2013, 2016, and 2019. For Exchange 2010, please use previous script found [here](https://www.microsoft.com/en-us/download/details.aspx?id=100414).
 
-### Syntax
+## Syntax
 
 ```powershell
 SourceSideValidations.ps1
@@ -29,7 +24,7 @@ SourceSideValidations.ps1 -SummarizePreviousResults
   [<CommonParameters>]
 ```
 
-### Output
+## Output
 
 The script will generate the following files. Usually the only one we care about is ValidationResults.csv. The others are purely for saving time on subsequent runs.
 
@@ -40,7 +35,7 @@ Statistics.csv|EntryID, item count, and size of every folder|Running with -Start
 NonIpmSubtree.csv|A subset of properties of all System Folders|Running with -StartFresh $false loads this file instead of retrieving fresh data
 ValidationResults.csv|Information about any issues found. This is file we want to examine to understand any issues found.|The script will display a summary of what it found, and in many cases it will provide an example command that uses input from this file to fix the problem.
 
-### Tests
+## Tests
 
 The script performs the following tests. The ValidationResults.csv can be filtered by ResultType to identify the respective folders.
 
@@ -53,17 +48,18 @@ Limit|FolderPathDepth|The folder path is greater than 299 folders deep.
 Limit|HierarchyCount|There are more than 250,000 total folders in the hierarchy.
 Limit|HierarchyAndDumpsterCount|There are more than 250,000 total folders if you count both the folders and their dumpsters.
 Limit|ItemCount|The folder has more than 1,000,000 items.
+Limit|NoStatistics|Get-PublicFolderStatistics did not return any statistics for these folders. ItemCount, TotalItemSize, and EmptyFolder tests were skipped.
 Limit|TotalItemSize|The items directly in this folder (not child folders) add up to more than 25 GB.
 MailEnabledFolder|MailDisabledWithProxyGuid|The folder is not mail-enabled, but it has the GUID of an Active Directory object in its MailRecipientGuid property.
 MailEnabledFolder|MailEnabledSystemFolder|The folder is a system folder, which should not be mail-enabled.
-MailEnabledFolder|MailEnabledWithNoADOjbect|The folder is mail-enabled, but it has no Active Directory object.
+MailEnabledFolder|MailEnabledWithNoADObject|The folder is mail-enabled, but it has no Active Directory object.
 MailEnabledFolder|OrphanedMPF|An Active Directory object exists, but it is not linked to any folder.
 MailEnabledFolder|OrphanedMPFDuplicate|An Active Directory object exists, but it points to a public folder which points to a different object.
 MailEnabledFolder|OrphanedMPFDisconnected|An Active Directory object exists, but it points to a public folder that is mail-disabled.
 FolderName|SpecialCharacters|Folder name contains @, /, or \\.
 Permission|BadPermission|The permission does not refer to a valid entity.
 
-### Usage
+## Usage
 
 Typically, the script should be run with no parameters:
 

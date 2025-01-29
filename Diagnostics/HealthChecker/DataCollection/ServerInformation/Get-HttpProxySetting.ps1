@@ -2,34 +2,41 @@
 # Licensed under the MIT License.
 
 . $PSScriptRoot\..\..\..\..\Shared\Invoke-ScriptBlockHandler.ps1
-Function Get-HttpProxySetting {
+function Get-HttpProxySetting {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Server
+    )
 
     Write-Verbose "Calling: $($MyInvocation.MyCommand)"
 
-    Function GetWinHttpSettings {
+    function GetWinHttpSettings {
         param(
             [Parameter(Mandatory = $true)][string]$RegistryLocation
         )
         $connections = Get-ItemProperty -Path $RegistryLocation
+        $byteLength = 4
+        $proxyStartLocation = 16
+        $proxyLength = 0
         $proxyAddress = [string]::Empty
         $byPassList = [string]::Empty
 
         if (($null -ne $connections) -and
             ($Connections | Get-Member).Name -contains "WinHttpSettings") {
-            $onProxy = $true
+            try {
+                $bytes = $Connections.WinHttpSettings
+                $proxyLength = [System.BitConverter]::ToInt32($bytes, $proxyStartLocation - $byteLength)
 
-            foreach ($Byte in $Connections.WinHttpSettings) {
-                if ($onProxy -and
-                    $Byte -ge 42) {
-                    $proxyAddress += [CHAR]$Byte
-                } elseif (-not $onProxy -and
-                    $Byte -ge 42) {
-                    $byPassList += [CHAR]$Byte
-                } elseif (-not ([string]::IsNullOrEmpty($proxyAddress)) -and
-                    $onProxy -and
-                    $Byte -eq 0) {
-                    $onProxy = $false
+                if ($proxyLength -gt 0) {
+                    $proxyAddress = [System.Text.Encoding]::UTF8.GetString($bytes, $proxyStartLocation, $proxyLength)
+                    $byPassListLength = [System.BitConverter]::ToInt32($bytes, $proxyStartLocation + $proxyLength)
+
+                    if ($byPassListLength -gt 0) {
+                        $byPassList = [System.Text.Encoding]::UTF8.GetString($bytes, $byteLength + $proxyStartLocation + $proxyLength, $byPassListLength)
+                    }
                 }
+            } catch {
+                Write-Verbose "Failed to properly get HTTP Proxy information. Inner Exception: $_"
             }
         }
 
@@ -39,13 +46,13 @@ Function Get-HttpProxySetting {
         }
     }
 
-    $httpProxy32 = Invoke-ScriptBlockHandler -ComputerName $Script:Server `
+    $httpProxy32 = Invoke-ScriptBlockHandler -ComputerName $Server `
         -ScriptBlock ${Function:GetWinHttpSettings} `
         -ArgumentList "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Internet Settings\Connections" `
         -ScriptBlockDescription "Getting 32 Http Proxy Value" `
         -CatchActionFunction ${Function:Invoke-CatchActions}
 
-    $httpProxy64 = Invoke-ScriptBlockHandler -ComputerName $Script:Server `
+    $httpProxy64 = Invoke-ScriptBlockHandler -ComputerName $Server `
         -ScriptBlock ${Function:GetWinHttpSettings} `
         -ArgumentList "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Internet Settings\Connections" `
         -ScriptBlockDescription "Getting 64 Http Proxy Value" `
